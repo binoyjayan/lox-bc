@@ -30,8 +30,16 @@ impl Chunk {
         self.lines.push(line);
     }
 
+    pub fn read_byte(&self, ip: usize) -> u8 {
+        self.code[ip]
+    }
+
     pub fn add_constant(&mut self, value: Value) -> u8 {
         self.constants.write(value) as u8
+    }
+
+    pub fn get_constant(&self, index: usize) -> Value {
+        self.constants.read_value(index)
     }
 
     pub fn free(&mut self) {
@@ -52,7 +60,7 @@ impl Chunk {
 
     fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{:04} ", offset);
-        if offset > 0 && self.lines[offset] == self.lines[offset -1] {
+        if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
             // The instruction belongs to the same line in source file
             print!("{:>4} ", "|"); // right justify
         } else {

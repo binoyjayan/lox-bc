@@ -21,7 +21,12 @@ impl ValueArray {
     pub fn free(&mut self) {
         self.values = Vec::new();
     }
+
     pub fn print(&self, idx: u8) {
         print!("{}", self.values[idx as usize]);
+    }
+
+    pub fn read_value(&self, index: usize) -> Value {
+        self.values[index]
     }
 }
