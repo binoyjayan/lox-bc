@@ -7,6 +7,7 @@ pub enum Opcode {
 
 pub struct Chunk {
     code: Vec<u8>,
+    lines: Vec<usize>,
     constants: ValueArray,
 }
 
@@ -14,16 +15,19 @@ impl Chunk {
     pub fn new() -> Self {
         Self {
             code: Vec::new(),
+            lines: Vec::new(),
             constants: ValueArray::new(),
         }
     }
 
-    pub fn write_byte(&mut self, byte: u8) {
-        self.code.push(byte)
+    pub fn write_byte(&mut self, byte: u8, line: usize) {
+        self.code.push(byte);
+        self.lines.push(line);
     }
 
-    pub fn write_opcode(&mut self, code: Opcode) {
-        self.code.push(code.into())
+    pub fn write_opcode(&mut self, code: Opcode, line: usize) {
+        self.code.push(code.into());
+        self.lines.push(line);
     }
 
     pub fn add_constant(&mut self, value: Value) -> u8 {
@@ -32,6 +36,7 @@ impl Chunk {
 
     pub fn free(&mut self) {
         self.code = Vec::new();
+        self.lines = Vec::new();
         self.constants.free();
     }
 
@@ -47,6 +52,12 @@ impl Chunk {
 
     fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{:04} ", offset);
+        if offset > 0 && self.lines[offset] == self.lines[offset -1] {
+            // The instruction belongs to the same line in source file
+            print!("{:>4} ", "|"); // right justify
+        } else {
+            print!("{:4} ", self.lines[offset]);
+        }
         let instruction: Opcode = self.code[offset].into();
         match instruction {
             Opcode::OpConstant => self.constant_instruction("OP_CONSTANT", offset),
