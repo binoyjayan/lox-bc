@@ -23,6 +23,8 @@ impl VM {
 
     fn run(&mut self, chunk: &Chunk) -> InterpretResult {
         loop {
+            #[cfg(feature = "debug_trace_execution")]
+            chunk.disassemble_instruction(self.ip);
             let instruction: Opcode = self.read_opcode(chunk);
             match instruction {
                 Opcode::OpReturn => return InterpretResult::Ok,
