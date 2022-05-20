@@ -34,7 +34,32 @@ impl VM {
             }
             let instruction: Opcode = self.read_opcode(chunk);
             match instruction {
-                Opcode::OpReturn => {
+                Opcode::Constant => {
+                    let constant = self.read_constant(chunk);
+                    self.stack.push(constant);
+                    // InterpretResult::Ok?
+                }
+                Opcode::Add => {
+                    self.binary_op(|a, b| a + b);
+                }
+                Opcode::Subtract => {
+                    self.binary_op(|a, b| a - b);
+                }
+                Opcode::Multiply => {
+                    self.binary_op(|a, b| a * b);
+                }
+                Opcode::Divide => {
+                    self.binary_op(|a, b| a / b);
+                }
+                Opcode::Negate => {
+                    if let Some(value) = self.stack.pop() {
+                        self.stack.push(-value);
+                    } else {
+                        // Stack overflow
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+                Opcode::Return => {
                     return if let Some(value) = self.stack.pop() {
                         println!("{}", value);
                         InterpretResult::Ok
@@ -42,10 +67,6 @@ impl VM {
                         // Stack overflow
                         InterpretResult::RuntimeError
                     };
-                }
-                Opcode::OpConstant => {
-                    let constant = self.read_constant(chunk);
-                    self.stack.push(constant);
                 }
             }
         }
@@ -72,5 +93,16 @@ impl VM {
             print!(" ]");
         }
         println!();
+    }
+
+    fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> InterpretResult {
+        // pop b before a
+        if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
+            self.stack.push(op(a, b));
+            InterpretResult::Ok
+        } else {
+            // Stack overflow
+            InterpretResult::RuntimeError
+        }
     }
 }

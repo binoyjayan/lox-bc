@@ -1,8 +1,13 @@
 use crate::value::*;
 
 pub enum Opcode {
-    OpConstant,
-    OpReturn,
+    Constant,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Negate,
+    Return,
 }
 
 pub struct Chunk {
@@ -68,8 +73,13 @@ impl Chunk {
         }
         let instruction: Opcode = self.code[offset].into();
         match instruction {
-            Opcode::OpConstant => self.constant_instruction("OP_CONSTANT", offset),
-            Opcode::OpReturn => self.simple_instruction("OP_RETURN", offset),
+            Opcode::Constant => self.constant_instruction("OP_CONSTANT", offset),
+            Opcode::Return => self.simple_instruction("OP_RETURN", offset),
+            Opcode::Add => self.simple_instruction("OP_AD", offset),
+            Opcode::Subtract => self.simple_instruction("OP_SUBTRACT", offset),
+            Opcode::Multiply => self.simple_instruction("OP_MULTIPLY", offset),
+            Opcode::Divide => self.simple_instruction("OP_DIVIDE", offset),
+            Opcode::Negate => self.simple_instruction("OP_NEGATE", offset),
         }
     }
 
@@ -92,8 +102,13 @@ impl Chunk {
 impl From<u8> for Opcode {
     fn from(code: u8) -> Self {
         match code {
-            0 => Opcode::OpConstant,
-            1 => Opcode::OpReturn,
+            0 => Opcode::Constant,
+            1 => Opcode::Add,
+            2 => Opcode::Subtract,
+            3 => Opcode::Multiply,
+            4 => Opcode::Divide,
+            5 => Opcode::Negate,
+            6 => Opcode::Return,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }
