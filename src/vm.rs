@@ -3,17 +3,21 @@ use crate::value::*;
 
 pub struct VM {
     ip: usize,
+    stack: Vec<Value>,
 }
 
 pub enum InterpretResult {
     Ok,
-    CompileError,
+    // CompileError,
     RuntimeError,
 }
 
 impl VM {
     pub fn new() -> Self {
-        Self { ip: 0 }
+        Self {
+            ip: 0,
+            stack: Vec::new(),
+        }
     }
 
     pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
@@ -24,15 +28,25 @@ impl VM {
     fn run(&mut self, chunk: &Chunk) -> InterpretResult {
         loop {
             #[cfg(feature = "debug_trace_execution")]
-            chunk.disassemble_instruction(self.ip);
+            {
+                self.print_stack();
+                chunk.disassemble_instruction(self.ip);
+            }
             let instruction: Opcode = self.read_opcode(chunk);
             match instruction {
-                Opcode::OpReturn => return InterpretResult::Ok,
+                Opcode::OpReturn => {
+                    return if let Some(value) = self.stack.pop() {
+                        println!("{}", value);
+                        InterpretResult::Ok
+                    } else {
+                        // Stack overflow
+                        InterpretResult::RuntimeError
+                    };
+                }
                 Opcode::OpConstant => {
                     let constant = self.read_constant(chunk);
-                    println!("{}", constant);
+                    self.stack.push(constant);
                 }
-                _ => todo!(),
             }
         }
     }
@@ -47,5 +61,16 @@ impl VM {
         let index = chunk.read_byte(self.ip) as usize;
         self.ip += 1;
         chunk.get_constant(index)
+    }
+
+    #[allow(dead_code)]
+    fn print_stack(&self) {
+        print!("          ");
+        for slot in &self.stack {
+            print!("[ ");
+            print!("{}", slot);
+            print!(" ]");
+        }
+        println!();
     }
 }
