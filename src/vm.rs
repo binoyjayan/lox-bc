@@ -1,4 +1,5 @@
 use crate::chunk::*;
+use crate::compiler::*;
 use crate::value::*;
 
 pub struct VM {
@@ -8,7 +9,7 @@ pub struct VM {
 
 pub enum InterpretResult {
     Ok,
-    // CompileError,
+    CompileError,
     RuntimeError,
 }
 
@@ -20,9 +21,12 @@ impl VM {
         }
     }
 
-    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
-        self.ip = 0;
-        self.run(chunk)
+    pub fn interpret(&mut self, source: &String) -> InterpretResult {
+        let mut compiler = Compiler::new();
+        compiler.compile(source);
+        InterpretResult::Ok
+        // self.ip = 0;
+        // self.run(chunk)
     }
 
     fn run(&mut self, chunk: &Chunk) -> InterpretResult {

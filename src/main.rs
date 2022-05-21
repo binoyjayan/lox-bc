@@ -1,36 +1,55 @@
 mod chunk;
+mod compiler;
+mod scanner;
+mod token;
 mod value;
 mod vm;
 
 use chunk::*;
 use vm::*;
 
+use std::env;
+use std::fs;
+use std::io;
+use std::io::{BufRead, Write};
+use std::process;
+
+use vm::InterpretResult;
+
 fn main() {
     let mut vm = VM::new();
-    let mut chunk = Chunk::new();
+    let args: Vec<String> = env::args().collect();
 
-    // Define the first constant
-    let constant = chunk.add_constant(1.2);
-    chunk.write_byte(constant, 123);
-    chunk.write_opcode(Opcode::Constant, 123);
+    match args.len() {
+        1 => repl(&mut vm),
+        2 => run_file(&mut vm, &args[1]).expect("Failed to run file"),
+        _ => {
+            println!("Usage: {} <script>", &args[0]);
+            process::exit(64);
+        }
+    }
+}
 
-    // Define a second constant
-    let constant = chunk.add_constant(3.4);
-    chunk.write_opcode(Opcode::Constant, 123);
-    chunk.write_byte(constant, 123);
-    // Add the two constants
-    chunk.write_opcode(Opcode::Add, 123);
+pub fn repl(vm: &mut VM) {
+    let stdin = io::stdin();
+    print!(">> ");
+    io::stdout().flush().unwrap();
+    for line in stdin.lock().lines() {
+        if let Ok(line) = line {
+            vm.interpret(&line);
+        }
+        print!(">> ");
+        io::stdout().flush().unwrap();
+    }
+    println!("\nExiting...");
+}
 
-    // Define a third constant
-    let constant = chunk.add_constant(5.6);
-    chunk.write_opcode(Opcode::Constant, 123);
-    chunk.write_byte(constant, 123);
-    chunk.write_opcode(Opcode::Divide, 123);
-
-    // Negate the value
-    chunk.write_opcode(Opcode::Negate, 123);
-    chunk.write_opcode(Opcode::Return, 123);
-    chunk.disassemble_chunk("test chunk");
-    vm.interpret(&chunk);
-    chunk.free()
+fn run_file(vm: &mut VM, path: &str) -> io::Result<()> {
+    let buf = fs::read_to_string(path)?;
+    match vm.interpret(&buf.to_string()) {
+        InterpretResult::Ok => {}
+        InterpretResult::CompileError => std::process::exit(65),
+        InterpretResult::RuntimeError => std::process::exit(70),
+    }
+    Ok(())
 }
