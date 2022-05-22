@@ -1,5 +1,7 @@
+use crate::error::*;
 use crate::scanner::*;
 use crate::token::*;
+use crate::vm::*;
 
 pub struct Compiler {}
 
@@ -8,7 +10,7 @@ impl Compiler {
         Self {}
     }
 
-    pub fn compile(&mut self, source: &String) {
+    pub fn compile(&mut self, source: &String) -> Result<(), InterpretResult> {
         let mut line = 0;
         let mut scanner = Scanner::new(source);
 
@@ -25,5 +27,6 @@ impl Compiler {
                 break;
             }
         }
+        Ok(())
     }
 }

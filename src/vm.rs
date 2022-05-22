@@ -1,16 +1,11 @@
 use crate::chunk::*;
 use crate::compiler::*;
+use crate::error::*;
 use crate::value::*;
 
 pub struct VM {
     ip: usize,
     stack: Vec<Value>,
-}
-
-pub enum InterpretResult {
-    Ok,
-    CompileError,
-    RuntimeError,
 }
 
 impl VM {
@@ -21,15 +16,15 @@ impl VM {
         }
     }
 
-    pub fn interpret(&mut self, source: &String) -> InterpretResult {
+    pub fn interpret(&mut self, source: &String) -> Result<(), InterpretResult> {
         let mut compiler = Compiler::new();
-        compiler.compile(source);
-        InterpretResult::Ok
+        let chunk = compiler.compile(source)?;
+        Ok(())
         // self.ip = 0;
         // self.run(chunk)
     }
 
-    fn run(&mut self, chunk: &Chunk) -> InterpretResult {
+    fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
@@ -60,16 +55,16 @@ impl VM {
                         self.stack.push(-value);
                     } else {
                         // Stack overflow
-                        return InterpretResult::RuntimeError;
+                        return Err(InterpretResult::RuntimeError);
                     }
                 }
                 Opcode::Return => {
                     return if let Some(value) = self.stack.pop() {
                         println!("{}", value);
-                        InterpretResult::Ok
+                        Ok(())
                     } else {
                         // Stack overflow
-                        InterpretResult::RuntimeError
+                        Err(InterpretResult::RuntimeError)
                     };
                 }
             }
@@ -99,14 +94,14 @@ impl VM {
         println!();
     }
 
-    fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> InterpretResult {
+    fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> Result<(), InterpretResult> {
         // pop b before a
         if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
             self.stack.push(op(a, b));
-            InterpretResult::Ok
+            Ok(())
         } else {
             // Stack overflow
-            InterpretResult::RuntimeError
+            Err(InterpretResult::RuntimeError)
         }
     }
 }
