@@ -4,10 +4,32 @@ pub struct Token {
     pub line: usize,
 }
 
+impl Token {
+    pub fn new(ttype: TokenType, lexeme: &str, line: usize) -> Self {
+        Self {
+            ttype,
+            lexeme: lexeme.to_string(),
+            line,
+        }
+    }
+}
+
+impl Clone for Token {
+    fn clone(&self) -> Self {
+        Self::new(self.ttype, &self.lexeme, self.line)
+    }
+}
+
+impl Default for Token {
+    fn default() -> Self {
+        Self::new(TokenType::Undefined, "", 0)
+    }
+}
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub enum TokenType {
     // Single-character tokens.
-    LeftParen,
+    LeftParen = 0,
     RightParen,
     LeftBrace,
     RightBrace,
@@ -53,4 +75,6 @@ pub enum TokenType {
     While,
     Error,
     Eof,
+    Undefined,
+    NumberOfTokens,
 }

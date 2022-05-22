@@ -8,6 +8,12 @@ pub struct VM {
     stack: Vec<Value>,
 }
 
+impl Default for VM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VM {
     pub fn new() -> Self {
         Self {
@@ -16,12 +22,12 @@ impl VM {
         }
     }
 
-    pub fn interpret(&mut self, source: &String) -> Result<(), InterpretResult> {
-        let mut compiler = Compiler::new();
-        let chunk = compiler.compile(source)?;
-        Ok(())
-        // self.ip = 0;
-        // self.run(chunk)
+    pub fn interpret(&mut self, source: &str) -> Result<(), InterpretResult> {
+        let mut chunk = Chunk::new();
+        let mut compiler = Compiler::new(&mut chunk);
+        compiler.compile(source)?;
+        self.ip = 0;
+        self.run(&chunk)
     }
 
     fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {

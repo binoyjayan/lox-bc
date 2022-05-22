@@ -8,7 +8,7 @@ pub struct Scanner {
 }
 
 impl Scanner {
-    pub fn new(source: &String) -> Self {
+    pub fn new(source: &str) -> Self {
         Self {
             source: source.chars().collect::<Vec<char>>(),
             start: 0,
@@ -37,8 +37,8 @@ impl Scanner {
             '+' => self.make_token(TokenType::Plus),
             '/' => self.make_token(TokenType::Slash),
             '*' => self.make_token(TokenType::Star),
-            '=' => {
-                let ne = self.matches('!');
+            '!' => {
+                let ne = self.matches('=');
                 self.make_token(if ne {
                     TokenType::BangEqual
                 } else {
@@ -78,15 +78,13 @@ impl Scanner {
 
     fn matches(&mut self, expected: char) -> bool {
         if self.is_at_end() {
-            false
-        } else {
-            if self.source[self.current] != expected {
-                false
-            } else {
-                self.current += 1;
-                true
-            }
+            return false;
         }
+        if self.source[self.current] != expected {
+            return false;
+        }
+        self.current += 1;
+        true
     }
 
     fn skip_whitespace(&mut self) {
