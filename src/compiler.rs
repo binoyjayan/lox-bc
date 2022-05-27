@@ -194,7 +194,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn end_compiler(&mut self) {
-        self.emit_return()
+        self.emit_return();
+
+        #[cfg(feature = "debug_print_code")]
+        if !*self.parser.had_error.borrow() {
+            self.chunk.disassemble_chunk("code");
+        }
     }
 
     /*
