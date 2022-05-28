@@ -1,3 +1,5 @@
+extern crate core;
+
 mod chunk;
 mod compiler;
 mod error;

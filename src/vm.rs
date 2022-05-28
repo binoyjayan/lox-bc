@@ -32,6 +32,10 @@ impl VM {
         result
     }
 
+    pub fn reset_stack(&mut self) {
+        self.stack.clear();
+    }
+
     fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         loop {
             #[cfg(feature = "debug_trace_execution")]
@@ -59,24 +63,29 @@ impl VM {
                     self.binary_op(|a, b| a / b)?;
                 }
                 Opcode::Negate => {
-                    if let Some(value) = self.stack.pop() {
-                        self.stack.push(-value);
+                    if let Value::Number(value) = self.peek(0)? {
+                        let _ = self.pop();
+                        self.stack.push(Value::Number(-value));
                     } else {
-                        // Stack overflow
-                        return Err(InterpretResult::RuntimeError);
+                        return self.error_runtime(chunk, "Operand must be a number");
                     }
                 }
                 Opcode::Return => {
-                    return if let Some(value) = self.stack.pop() {
-                        println!("{}", value);
-                        Ok(())
-                    } else {
-                        // Stack overflow
-                        Err(InterpretResult::RuntimeError)
-                    };
+                    println!("{}", self.pop()?);
+                    return Ok(());
                 }
             }
         }
+    }
+
+    fn pop(&mut self) -> Result<Value, InterpretResult> {
+        // TODO: Report stack underflow
+        self.stack.pop().ok_or(InterpretResult::RuntimeError)
+    }
+
+    fn peek(&mut self, distance: usize) -> Result<Value, InterpretResult> {
+        // TODO: Report stack underflow
+        Ok(self.stack[self.stack.len() - distance - 1])
     }
 
     fn read_opcode(&mut self, chunk: &Chunk) -> Opcode {
@@ -103,13 +112,27 @@ impl VM {
     }
 
     fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> Result<(), InterpretResult> {
-        // pop b before a
-        if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
-            self.stack.push(op(a, b));
-            Ok(())
-        } else {
-            // Stack overflow
-            Err(InterpretResult::RuntimeError)
+        if !self.peek(0)?.is_number() || !self.peek(1)?.is_number() {
+            //return self.error_runtime()
+            return Err(InterpretResult::RuntimeError);
         }
+        // pop b before a
+        let b = self.pop()?;
+        let a = self.pop()?;
+        self.stack.push(op(a, b));
+        Ok(())
+    }
+
+    /*
+     * Look into the chunk's debug lines array to find the executing instruction's
+     * current line number in source code. 'ip' always points to the next instruction.
+     * So, the current instr
+     */
+    fn error_runtime<T: ToString>(&mut self, chunk: &Chunk, err_str: T) -> Result<(), InterpretResult> {
+        let line = chunk.get_line(self.ip - 1);
+        eprintln!("{}", err_str.to_string());
+        eprintln!("[line {}] in script", line);
+        self.reset_stack();
+        Err(InterpretResult::RuntimeError)
     }
 }

@@ -2,7 +2,86 @@
  * A constant pool is an array of values. A LOAD instruction to load
  * a constant looks up the value by index in that array.
  */
-pub type Value = f64;
+use std::fmt;
+use std::ops;
+
+#[derive(Copy, Clone)]
+pub enum Value {
+    Boolean(bool),
+    Number(f64),
+    Nil,
+}
+
+impl Value {
+    pub fn is_number(&self) -> bool {
+        if let Value::Number(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::Number(val) => write!(f, "{}", val),
+            Self::Boolean(val) => write!(f, "{}", val),
+            Self::Nil => write!(f, "nil"),
+        }
+    }
+}
+
+impl ops::Add for Value {
+    type Output = Value;
+
+    fn add(self, other: Value) -> Value {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Value::Number(a + b),
+            _ => panic!("Invalid operation"),
+        }
+    }
+}
+
+impl ops::Sub for Value {
+    type Output = Value;
+    fn sub(self, other: Value) -> Value {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Value::Number(a - b),
+            _ => panic!("Invalid operation"),
+        }
+    }
+}
+
+impl ops::Mul for Value {
+    type Output = Value;
+    fn mul(self, other: Value) -> Value {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Value::Number(a * b),
+            _ => panic!("Invalid operation"),
+        }
+    }
+}
+
+impl ops::Div for Value {
+    type Output = Value;
+    fn div(self, other: Value) -> Value {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Value::Number(a / b),
+            _ => panic!("Invalid operation"),
+        }
+    }
+}
+
+impl ops::Neg for Value {
+    type Output = Value;
+    fn neg(self) -> Value {
+        match self {
+            Value::Number(a) => Value::Number(-a),
+            _ => panic!("Invalid operation"),
+        }
+    }
+}
 
 pub struct ValueArray {
     values: Vec<Value>,
