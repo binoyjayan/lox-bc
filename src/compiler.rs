@@ -6,7 +6,6 @@ use crate::precedence::*;
 use crate::scanner::*;
 use crate::token::*;
 use crate::value::*;
-use crate::vm::*;
 
 pub struct Compiler<'a> {
     parser: Parser,

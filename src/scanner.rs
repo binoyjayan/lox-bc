@@ -94,7 +94,7 @@ impl Scanner {
                     self.advance();
                 }
                 '\n' => {
-                    self.line + 1;
+                    self.line += 1;
                     self.advance();
                 }
                 '/' => {

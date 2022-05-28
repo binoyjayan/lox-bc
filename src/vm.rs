@@ -27,7 +27,9 @@ impl VM {
         let mut compiler = Compiler::new(&mut chunk);
         compiler.compile(source)?;
         self.ip = 0;
-        self.run(&chunk)
+        let result = self.run(&chunk);
+        chunk.free();
+        result
     }
 
     fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
@@ -45,16 +47,16 @@ impl VM {
                     // InterpretResult::Ok?
                 }
                 Opcode::Add => {
-                    self.binary_op(|a, b| a + b);
+                    self.binary_op(|a, b| a + b)?;
                 }
                 Opcode::Subtract => {
-                    self.binary_op(|a, b| a - b);
+                    self.binary_op(|a, b| a - b)?;
                 }
                 Opcode::Multiply => {
-                    self.binary_op(|a, b| a * b);
+                    self.binary_op(|a, b| a * b)?;
                 }
                 Opcode::Divide => {
-                    self.binary_op(|a, b| a / b);
+                    self.binary_op(|a, b| a / b)?;
                 }
                 Opcode::Negate => {
                     if let Some(value) = self.stack.pop() {

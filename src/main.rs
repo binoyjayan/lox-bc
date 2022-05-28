@@ -7,7 +7,6 @@ mod token;
 mod value;
 mod vm;
 
-use chunk::*;
 use error::*;
 use vm::*;
 
@@ -37,7 +36,7 @@ pub fn repl(vm: &mut VM) {
     io::stdout().flush().unwrap();
     for line in stdin.lock().lines() {
         if let Ok(line) = line {
-            vm.interpret(&line);
+            let _ = vm.interpret(&line);
         }
         print!(">> ");
         io::stdout().flush().unwrap();
