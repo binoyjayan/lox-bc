@@ -40,7 +40,7 @@ impl Chunk {
         u8::try_from(idx).ok()
     }
 
-    pub fn get_constant(&self, index: usize) -> Value {
+    pub fn get_constant(&self, index: usize) -> &Value {
         self.constants.read_value(index)
     }
 
@@ -48,11 +48,11 @@ impl Chunk {
         self.lines[ip]
     }
 
-    pub fn free(&mut self) {
-        self.code = Vec::new();
-        self.lines = Vec::new();
-        self.constants.free();
-    }
+    // pub fn free(&mut self) {
+    //     self.code = Vec::new();
+    //     self.lines = Vec::new();
+    //     self.constants.free();
+    // }
 
     pub fn disassemble_chunk<T: ToString>(&self, name: T) {
         // Display header to know which chunk is being disassembled

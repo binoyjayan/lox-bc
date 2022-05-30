@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::chunk::*;
 use crate::compiler::*;
 use crate::error::*;
@@ -6,6 +8,7 @@ use crate::value::*;
 pub struct VM {
     ip: usize,
     stack: Vec<Value>,
+    chunk: Rc<Chunk>,
 }
 
 impl Default for VM {
@@ -19,6 +22,7 @@ impl VM {
         Self {
             ip: 0,
             stack: Vec::new(),
+            chunk: Rc::new(Chunk::new()),
         }
     }
 
@@ -27,26 +31,26 @@ impl VM {
         let mut compiler = Compiler::new(&mut chunk);
         compiler.compile(source)?;
         self.ip = 0;
-        let result = self.run(&chunk);
-        chunk.free();
-        result
+        self.chunk = Rc::new(chunk);
+        self.run()
+        // self.chunk.free();
     }
 
     pub fn reset_stack(&mut self) {
         self.stack.clear();
     }
 
-    fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
+    fn run(&mut self) -> Result<(), InterpretResult> {
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
                 self.print_stack();
-                chunk.disassemble_instruction(self.ip);
+                self.chunk.disassemble_instruction(self.ip);
             }
-            let instruction: Opcode = self.read_opcode(chunk);
+            let instruction: Opcode = self.read_opcode();
             match instruction {
                 Opcode::Constant => {
-                    let constant = self.read_constant(chunk);
+                    let constant = self.read_constant();
                     self.stack.push(constant);
                     // InterpretResult::Ok?
                 }
@@ -67,7 +71,7 @@ impl VM {
                         let _ = self.pop();
                         self.stack.push(Value::Number(-value));
                     } else {
-                        return self.error_runtime(chunk, "Operand must be a number");
+                        return Err(self.error_runtime("Operand must be a number"));
                     }
                 }
                 Opcode::Return => {
@@ -79,25 +83,30 @@ impl VM {
     }
 
     fn pop(&mut self) -> Result<Value, InterpretResult> {
-        // TODO: Report stack underflow
-        self.stack.pop().ok_or(InterpretResult::RuntimeError)
+        match self.stack.pop() {
+            Some(value) => Ok(value),
+            None => Err(self.error_runtime("Stack underflow")),
+        }
     }
 
     fn peek(&mut self, distance: usize) -> Result<Value, InterpretResult> {
-        // TODO: Report stack underflow
-        Ok(self.stack[self.stack.len() - distance - 1])
+        if distance >= self.stack.len() {
+            Err(self.error_runtime("Stack underflow"))
+        } else {
+            Ok(self.stack[self.stack.len() - distance - 1].clone())
+        }
     }
 
-    fn read_opcode(&mut self, chunk: &Chunk) -> Opcode {
-        let val: Opcode = chunk.read_byte(self.ip).into();
+    fn read_opcode(&mut self) -> Opcode {
+        let val: Opcode = self.chunk.read_byte(self.ip).into();
         self.ip += 1;
         val
     }
 
-    fn read_constant(&mut self, chunk: &Chunk) -> Value {
-        let index = chunk.read_byte(self.ip) as usize;
+    fn read_constant(&mut self) -> Value {
+        let index = self.chunk.read_byte(self.ip) as usize;
         self.ip += 1;
-        chunk.get_constant(index)
+        self.chunk.get_constant(index).clone()
     }
 
     #[allow(dead_code)]
@@ -113,8 +122,7 @@ impl VM {
 
     fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> Result<(), InterpretResult> {
         if !self.peek(0)?.is_number() || !self.peek(1)?.is_number() {
-            //return self.error_runtime()
-            return Err(InterpretResult::RuntimeError);
+            return Err(self.error_runtime("Operands must be numbers."));
         }
         // pop b before a
         let b = self.pop()?;
@@ -128,11 +136,11 @@ impl VM {
      * current line number in source code. 'ip' always points to the next instruction.
      * So, the current instr
      */
-    fn error_runtime<T: ToString>(&mut self, chunk: &Chunk, err_str: T) -> Result<(), InterpretResult> {
-        let line = chunk.get_line(self.ip - 1);
+    fn error_runtime<T: ToString>(&mut self, err_str: T) -> InterpretResult {
+        let line = self.chunk.get_line(self.ip - 1);
         eprintln!("{}", err_str.to_string());
         eprintln!("[line {}] in script", line);
         self.reset_stack();
-        Err(InterpretResult::RuntimeError)
+        InterpretResult::RuntimeError
     }
 }

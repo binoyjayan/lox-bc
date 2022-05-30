@@ -5,7 +5,7 @@
 use std::fmt;
 use std::ops;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
@@ -14,11 +14,7 @@ pub enum Value {
 
 impl Value {
     pub fn is_number(&self) -> bool {
-        if let Value::Number(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Value::Number(_))
     }
 }
 
@@ -97,15 +93,15 @@ impl ValueArray {
         self.values.len() - 1
     }
 
-    pub fn free(&mut self) {
-        self.values = Vec::new();
-    }
+    // pub fn free(&mut self) {
+    //     self.values = Vec::new();
+    // }
 
     pub fn print(&self, idx: u8) {
         print!("{}", self.values[idx as usize]);
     }
 
-    pub fn read_value(&self, index: usize) -> Value {
-        self.values[index]
+    pub fn read_value(&self, index: usize) -> &Value {
+        &self.values[index]
     }
 }

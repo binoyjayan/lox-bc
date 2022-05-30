@@ -25,7 +25,7 @@ impl Precedence {
         let curr = self as usize;
         (curr + 1).into()
     }
-    pub fn prev(self) -> Self {
+    pub fn _prev(self) -> Self {
         if self == Self::None {
             panic!("Precedence::None does not have a prev()")
         }
