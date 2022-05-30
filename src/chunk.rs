@@ -12,6 +12,7 @@ pub enum Opcode {
     Nil,
     True,
     False,
+    Not,
 }
 
 pub struct Chunk {
@@ -87,6 +88,7 @@ impl Chunk {
             Opcode::Nil => self.simple_instruction("OP_NIL", offset),
             Opcode::True => self.simple_instruction("OP_TRUE", offset),
             Opcode::False => self.simple_instruction("OP_FALSE", offset),
+            Opcode::Not => self.simple_instruction("OP_NOT", offset),
         }
     }
 
@@ -119,6 +121,7 @@ impl From<u8> for Opcode {
             7 => Opcode::Nil,
             8 => Opcode::True,
             9 => Opcode::False,
+            10 => Opcode::Not,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

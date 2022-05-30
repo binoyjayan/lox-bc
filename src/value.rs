@@ -16,6 +16,9 @@ impl Value {
     pub fn is_number(&self) -> bool {
         matches!(self, Value::Number(_))
     }
+    pub fn is_falsey(&self) -> bool {
+        matches!(self, Value::Boolean(false) | Value::Nil )
+    }
 }
 
 impl fmt::Display for Value {

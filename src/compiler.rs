@@ -86,7 +86,7 @@ impl<'a> Compiler<'a> {
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
         rules[TokenType::Star as usize] =
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
-        rules[TokenType::Bang as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Bang as usize] = ParseRule::new(Some(|c| c.unary()), None, Precedence::None);
         rules[TokenType::BangEqual as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Equal as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::EqualEqual as usize] = ParseRule::new(None, None, Precedence::None);
@@ -248,6 +248,7 @@ impl<'a> Compiler<'a> {
 
         match operator_type {
             TokenType::Minus => self.emit_byte(Opcode::Negate.into()),
+            TokenType::Bang => self.emit_byte(Opcode::Not.into()),
             _ => unimplemented!(),
         }
     }

@@ -165,7 +165,7 @@ impl Scanner {
             'f' => {
                 if self.current - self.start > 1 {
                     match self.source[self.start + 1] {
-                        'a' => return self.check_keyword(2, 3, "alse", TokenType::False),
+                        'a' => return self.check_keyword(2, 3, "lse", TokenType::False),
                         'o' => return self.check_keyword(2, 1, "r", TokenType::For),
                         'u' => return self.check_keyword(2, 1, "n", TokenType::Fun),
                         _ => {}
