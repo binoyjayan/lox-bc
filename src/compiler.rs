@@ -102,7 +102,7 @@ impl<'a> Compiler<'a> {
         rules[TokenType::LessEqual as usize] =
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
         rules[TokenType::Identifier as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::StringLiteral as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::StringLiteral as usize] = ParseRule::new(Some(|c| c.string()), None, Precedence::None);
         rules[TokenType::Number as usize] =
             ParseRule::new(Some(|c| c.number()), None, Precedence::None);
         rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
@@ -258,6 +258,14 @@ impl<'a> Compiler<'a> {
     fn number(&mut self) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
+    }
+
+    // If lox supported escape sequences, it would have been translated here.
+    fn string(&mut self) {
+        // Remove quotes
+        let len= self.parser.previous.lexeme.len() - 1;
+        let value = self.parser.previous.lexeme[1..len].to_string();
+        self.emit_constant(Value::Str(value));
     }
 
     fn unary(&mut self) {

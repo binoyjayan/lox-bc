@@ -50,7 +50,7 @@ impl VM {
             let instruction: Opcode = self.read_opcode();
             match instruction {
                 Opcode::Constant => {
-                    let constant = self.read_constant();
+                    let constant = self.read_constant().clone();
                     self.stack.push(constant);
                 }
                 Opcode::Return => {
@@ -120,10 +120,10 @@ impl VM {
         val
     }
 
-    fn read_constant(&mut self) -> Value {
+    fn read_constant(&mut self) -> &Value {
         let index = self.chunk.read_byte(self.ip) as usize;
         self.ip += 1;
-        self.chunk.get_constant(index).clone()
+        self.chunk.get_constant(index)
     }
 
     #[allow(dead_code)]

@@ -5,11 +5,23 @@
 use std::fmt;
 use std::ops;
 
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
     Nil,
+    Str(String),
+}
+
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Value::Boolean(b) => Value::Boolean(*b),
+            Value::Number(n) => Value::Number(*n),
+            Value::Nil => Value::Nil,
+            Value::Str(s) => Value::Str(s.clone()),
+        }
+    }
 }
 
 impl Value {
@@ -26,6 +38,7 @@ impl fmt::Display for Value {
         match self {
             Self::Number(val) => write!(f, "{}", val),
             Self::Boolean(val) => write!(f, "{}", val),
+            Self::Str(s) => write!(f, "{}", s),
             Self::Nil => write!(f, "nil"),
         }
     }
@@ -88,7 +101,9 @@ pub struct ValueArray {
 
 impl ValueArray {
     pub fn new() -> Self {
-        Self { values: Vec::new() }
+        Self {
+            values: Vec::new(),
+        }
     }
 
     pub fn write(&mut self, value: Value) -> usize {
@@ -99,6 +114,7 @@ impl ValueArray {
     // pub fn free(&mut self) {
     //     self.values = Vec::new();
     // }
+
 
     pub fn print(&self, idx: u8) {
         print!("{}", self.values[idx as usize]);
