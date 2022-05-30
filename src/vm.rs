@@ -77,12 +77,23 @@ impl VM {
                         return Err(self.error_runtime("Operand must be a number"));
                     }
                 }
+                Opcode::Nil => self.stack.push(Value::Nil),
                 Opcode::False => self.stack.push(Value::Boolean(false)),
                 Opcode::True => self.stack.push(Value::Boolean(true)),
-                Opcode::Nil => self.stack.push(Value::Nil),
                 Opcode::Not => {
                     let value = self.pop()?;
                     self.stack.push(Value::Boolean(value.is_falsey()))
+                }
+                Opcode::Equal => {
+                    let b = self.pop()?;
+                    let a = self.pop()?;
+                    self.stack.push(Value::Boolean(a == b));
+                }
+                Opcode::Greater => {
+                    self.binary_op(|a, b| Value::Boolean(a > b))?;
+                }
+                Opcode::Less => {
+                    self.binary_op(|a, b| Value::Boolean(a < b))?;
                 }
             }
         }

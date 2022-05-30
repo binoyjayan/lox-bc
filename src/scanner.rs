@@ -54,19 +54,19 @@ impl Scanner {
                 })
             }
             '<' => {
-                let lt = self.matches('<');
+                let lt = self.matches('=');
                 self.make_token(if lt {
                     TokenType::LessEqual
                 } else {
-                    TokenType::Greater
+                    TokenType::Less
                 })
             }
             '>' => {
-                let gt = self.matches('>');
+                let gt = self.matches('=');
                 self.make_token(if gt {
                     TokenType::GreaterEqual
                 } else {
-                    TokenType::Less
+                    TokenType::Greater
                 })
             }
             '"' => self.string(),

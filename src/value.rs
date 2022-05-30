@@ -5,7 +5,7 @@
 use std::fmt;
 use std::ops;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
@@ -17,7 +17,7 @@ impl Value {
         matches!(self, Value::Number(_))
     }
     pub fn is_falsey(&self) -> bool {
-        matches!(self, Value::Boolean(false) | Value::Nil )
+        matches!(self, Value::Boolean(false) | Value::Nil)
     }
 }
 

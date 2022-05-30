@@ -3,16 +3,19 @@ use std::convert::TryFrom;
 
 pub enum Opcode {
     Constant,
+    Return,
     Add,
     Subtract,
     Multiply,
     Divide,
     Negate,
-    Return,
     Nil,
     True,
     False,
     Not,
+    Equal,
+    Greater,
+    Less,
 }
 
 pub struct Chunk {
@@ -89,6 +92,9 @@ impl Chunk {
             Opcode::True => self.simple_instruction("OP_TRUE", offset),
             Opcode::False => self.simple_instruction("OP_FALSE", offset),
             Opcode::Not => self.simple_instruction("OP_NOT", offset),
+            Opcode::Equal => self.simple_instruction("OP_EQ", offset),
+            Opcode::Greater => self.simple_instruction("OP_GT", offset),
+            Opcode::Less => self.simple_instruction("OP_LT", offset),
         }
     }
 
@@ -112,16 +118,19 @@ impl From<u8> for Opcode {
     fn from(code: u8) -> Self {
         match code {
             0 => Opcode::Constant,
-            1 => Opcode::Add,
-            2 => Opcode::Subtract,
-            3 => Opcode::Multiply,
-            4 => Opcode::Divide,
-            5 => Opcode::Negate,
-            6 => Opcode::Return,
+            1 => Opcode::Return,
+            2 => Opcode::Add,
+            3 => Opcode::Subtract,
+            4 => Opcode::Multiply,
+            5 => Opcode::Divide,
+            6 => Opcode::Negate,
             7 => Opcode::Nil,
             8 => Opcode::True,
             9 => Opcode::False,
             10 => Opcode::Not,
+            11 => Opcode::Equal,
+            12 => Opcode::Greater,
+            13 => Opcode::Less,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

@@ -86,14 +86,21 @@ impl<'a> Compiler<'a> {
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
         rules[TokenType::Star as usize] =
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
-        rules[TokenType::Bang as usize] = ParseRule::new(Some(|c| c.unary()), None, Precedence::None);
-        rules[TokenType::BangEqual as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Bang as usize] =
+            ParseRule::new(Some(|c| c.unary()), None, Precedence::None);
+        rules[TokenType::BangEqual as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Equality);
         rules[TokenType::Equal as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::EqualEqual as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Greater as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::GreaterEqual as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Less as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::LessEqual as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::EqualEqual as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Equality);
+        rules[TokenType::Greater as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+        rules[TokenType::GreaterEqual as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+        rules[TokenType::Less as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+        rules[TokenType::LessEqual as usize] =
+            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
         rules[TokenType::Identifier as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::StringLiteral as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Number as usize] =
@@ -101,18 +108,21 @@ impl<'a> Compiler<'a> {
         rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Class as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Else as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::False as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+        rules[TokenType::False as usize] =
+            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Fun as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::If as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Nil as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+        rules[TokenType::Nil as usize] =
+            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::Or as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::This as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::True as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+        rules[TokenType::True as usize] =
+            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::Var as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::While as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Error as usize] = ParseRule::new(None, None, Precedence::None);
@@ -214,6 +224,15 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(rule);
 
         match operator_type {
+            // 'a != b' is same as '!(a == b)'
+            TokenType::BangEqual => self.emit_bytes(Opcode::Equal, Opcode::Not.into()),
+            TokenType::EqualEqual => self.emit_byte(Opcode::Equal.into()),
+            TokenType::Greater => self.emit_byte(Opcode::Greater.into()),
+            // 'a >= b' is same as '!(a < b)'
+            TokenType::GreaterEqual => self.emit_bytes(Opcode::Less, Opcode::Not.into()),
+            TokenType::Less => self.emit_byte(Opcode::Less.into()),
+            // 'a <= b' is same as '!(a > b)'
+            TokenType::LessEqual => self.emit_bytes(Opcode::Greater, Opcode::Not.into()),
             TokenType::Plus => self.emit_byte(Opcode::Add.into()),
             TokenType::Minus => self.emit_byte(Opcode::Subtract.into()),
             TokenType::Star => self.emit_byte(Opcode::Multiply.into()),
