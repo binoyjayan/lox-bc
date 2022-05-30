@@ -9,6 +9,9 @@ pub enum Opcode {
     Divide,
     Negate,
     Return,
+    Nil,
+    True,
+    False,
 }
 
 pub struct Chunk {
@@ -81,6 +84,9 @@ impl Chunk {
             Opcode::Multiply => self.simple_instruction("OP_MULTIPLY", offset),
             Opcode::Divide => self.simple_instruction("OP_DIVIDE", offset),
             Opcode::Negate => self.simple_instruction("OP_NEGATE", offset),
+            Opcode::Nil => self.simple_instruction("OP_NIL", offset),
+            Opcode::True => self.simple_instruction("OP_TRUE", offset),
+            Opcode::False => self.simple_instruction("OP_FALSE", offset),
         }
     }
 
@@ -110,6 +116,9 @@ impl From<u8> for Opcode {
             4 => Opcode::Divide,
             5 => Opcode::Negate,
             6 => Opcode::Return,
+            7 => Opcode::Nil,
+            8 => Opcode::True,
+            9 => Opcode::False,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

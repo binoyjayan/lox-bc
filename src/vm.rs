@@ -52,7 +52,6 @@ impl VM {
                 Opcode::Constant => {
                     let constant = self.read_constant();
                     self.stack.push(constant);
-                    // InterpretResult::Ok?
                 }
                 Opcode::Add => {
                     self.binary_op(|a, b| a + b)?;
@@ -74,6 +73,9 @@ impl VM {
                         return Err(self.error_runtime("Operand must be a number"));
                     }
                 }
+                Opcode::False => self.stack.push(Value::Boolean(false)),
+                Opcode::True => self.stack.push(Value::Boolean(true)),
+                Opcode::Nil => self.stack.push(Value::Nil),
                 Opcode::Return => {
                     println!("{}", self.pop()?);
                     return Ok(());

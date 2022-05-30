@@ -101,18 +101,18 @@ impl<'a> Compiler<'a> {
         rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Class as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Else as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::False as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::False as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Fun as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::If as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Nil as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Nil as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::Or as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::This as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::True as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::True as usize] = ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
         rules[TokenType::Var as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::While as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Error as usize] = ParseRule::new(None, None, Precedence::None);
@@ -219,6 +219,15 @@ impl<'a> Compiler<'a> {
             TokenType::Star => self.emit_byte(Opcode::Multiply.into()),
             TokenType::Slash => self.emit_byte(Opcode::Divide.into()),
             _ => panic!("Unreachable"),
+        }
+    }
+
+    fn literal(&mut self) {
+        match self.parser.previous.ttype {
+            TokenType::Nil => self.emit_byte(Opcode::Nil.into()),
+            TokenType::True => self.emit_byte(Opcode::True.into()),
+            TokenType::False => self.emit_byte(Opcode::False.into()),
+            _ => unreachable!(),
         }
     }
 
