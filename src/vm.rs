@@ -138,14 +138,21 @@ impl VM {
     }
 
     fn binary_op(&mut self, op: fn(a: Value, b: Value) -> Value) -> Result<(), InterpretResult> {
-        if !self.peek(0)?.is_number() || !self.peek(1)?.is_number() {
-            return Err(self.error_runtime("Operands must be numbers."));
+        if self.peek(0)?.is_string() && self.peek(1)?.is_string() {
+            // pop b before a
+            let b = self.pop()?;
+            let a = self.pop()?;
+            self.stack.push(Value::Str(format!("{}{}", a, b)));
+            Ok(())
+        } else if self.peek(0)?.is_number() && self.peek(1)?.is_number() {
+            // pop b before a
+            let b = self.pop()?;
+            let a = self.pop()?;
+            self.stack.push(op(a, b));
+            Ok(())
+        } else {
+            Err(self.error_runtime("Operands must be two numbers or two strings."))
         }
-        // pop b before a
-        let b = self.pop()?;
-        let a = self.pop()?;
-        self.stack.push(op(a, b));
-        Ok(())
     }
 
     /*

@@ -25,6 +25,9 @@ impl Clone for Value {
 }
 
 impl Value {
+    pub fn is_string(&self) -> bool {
+        matches!(self, Value::Str(_))
+    }
     pub fn is_number(&self) -> bool {
         matches!(self, Value::Number(_))
     }
