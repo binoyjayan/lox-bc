@@ -104,9 +104,7 @@ pub struct ValueArray {
 
 impl ValueArray {
     pub fn new() -> Self {
-        Self {
-            values: Vec::new(),
-        }
+        Self { values: Vec::new() }
     }
 
     pub fn write(&mut self, value: Value) -> usize {
@@ -117,7 +115,6 @@ impl ValueArray {
     // pub fn free(&mut self) {
     //     self.values = Vec::new();
     // }
-
 
     pub fn print(&self, idx: u8) {
         print!("{}", self.values[idx as usize]);

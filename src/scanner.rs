@@ -76,7 +76,7 @@ impl Scanner {
         }
     }
 
-    fn matches(&mut self, expected: char) -> bool {
+    pub fn matches(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
         }

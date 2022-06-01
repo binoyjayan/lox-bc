@@ -102,7 +102,8 @@ impl<'a> Compiler<'a> {
         rules[TokenType::LessEqual as usize] =
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
         rules[TokenType::Identifier as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::StringLiteral as usize] = ParseRule::new(Some(|c| c.string()), None, Precedence::None);
+        rules[TokenType::StringLiteral as usize] =
+            ParseRule::new(Some(|c| c.string()), None, Precedence::None);
         rules[TokenType::Number as usize] =
             ParseRule::new(Some(|c| c.number()), None, Precedence::None);
         rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
@@ -144,7 +145,9 @@ impl<'a> Compiler<'a> {
         self.scanner = Scanner::new(source);
 
         self.advance();
-        self.expression();
+        while !self.matches(TokenType::Eof) {
+            self.declaration();
+        }
         self.consume(TokenType::Eof, "Expect end of expression.");
         self.end_compiler();
 
@@ -173,6 +176,19 @@ impl<'a> Compiler<'a> {
             return;
         }
         self.error_at_current(message);
+    }
+
+    fn check(&self, ttype: TokenType) -> bool {
+        self.parser.current.ttype == ttype
+    }
+
+    fn matches(&mut self, ttype: TokenType) -> bool {
+        if self.check(ttype) {
+            self.advance();
+            true
+        } else {
+            false
+        }
     }
 
     fn emit_byte(&mut self, byte: u8) {
@@ -263,7 +279,7 @@ impl<'a> Compiler<'a> {
     // If lox supported escape sequences, it would have been translated here.
     fn string(&mut self) {
         // Remove quotes
-        let len= self.parser.previous.lexeme.len() - 1;
+        let len = self.parser.previous.lexeme.len() - 1;
         let value = self.parser.previous.lexeme[1..len].to_string();
         self.emit_constant(Value::Str(value));
     }
@@ -341,6 +357,22 @@ impl<'a> Compiler<'a> {
     // This subsumes all of the higher-precedence expressions too.
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment)
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(Opcode::Print.into());
+    }
+
+    fn declaration(&mut self) {
+        self.statement();
+    }
+
+    fn statement(&mut self) {
+        if self.matches(TokenType::Print) {
+            self.print_statement();
+        }
     }
 
     pub fn error_at_current(&self, message: &str) {

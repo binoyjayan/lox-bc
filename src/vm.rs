@@ -54,7 +54,7 @@ impl VM {
                     self.stack.push(constant);
                 }
                 Opcode::Return => {
-                    println!("{}", self.pop()?);
+                    // Exit interpreter
                     return Ok(());
                 }
                 Opcode::Add => {
@@ -95,6 +95,10 @@ impl VM {
                 Opcode::Less => {
                     self.binary_op(|a, b| Value::Boolean(a < b))?;
                 }
+                Opcode::Print => {
+                    let value = self.pop()?;
+                    println!("{}\n", value);
+                }
             }
         }
     }
@@ -102,13 +106,17 @@ impl VM {
     fn pop(&mut self) -> Result<Value, InterpretResult> {
         match self.stack.pop() {
             Some(value) => Ok(value),
-            None => Err(self.error_runtime("Stack underflow")),
+            None => {
+                // Err(self.error_runtime("Stack underflow"))
+                panic!("Stack underflow");
+            }
         }
     }
 
     fn peek(&mut self, distance: usize) -> Result<Value, InterpretResult> {
         if distance >= self.stack.len() {
-            Err(self.error_runtime("Stack underflow"))
+            // Err(self.error_runtime("Stack underflow"))
+            panic!("Stack underflow");
         } else {
             Ok(self.stack[self.stack.len() - distance - 1].clone())
         }
