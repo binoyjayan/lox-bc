@@ -377,8 +377,33 @@ impl<'a> Compiler<'a> {
         self.emit_byte(Opcode::Print.into());
     }
 
+    fn synchronize(&mut self) {
+        self.parser.panic_mode.replace(false);
+        while self.parser.current.ttype != TokenType::Eof {
+            if self.parser.previous.ttype == TokenType::Semicolon {
+                return;
+            }
+            if matches!(self.parser.current.ttype,
+                TokenType::Class |
+                TokenType::Fun |
+                TokenType::Var |
+                TokenType::For |
+                TokenType::If |
+                TokenType::While |
+                TokenType::Print |
+                TokenType::Return) {
+                    return;
+            }
+        self.advance()
+        }
+    }
+
     fn declaration(&mut self) {
         self.statement();
+        let paniced= *self.parser.panic_mode.borrow();
+        if  paniced {
+            self.synchronize()
+        }
     }
 
     fn statement(&mut self) {
