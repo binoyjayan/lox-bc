@@ -359,6 +359,18 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::Assignment)
     }
 
+    /*
+     * An expression statement is an expression followed by a semicolon.
+     * Semantically, an expression statement evaluates the expression and
+     * discards the result. The compiler directly encodes that behavior by
+     * emiting a POP instruction so that the result is removed from the stack.
+     */
+    fn expr_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(Opcode::Pop.into());
+    }
+
     fn print_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
@@ -372,6 +384,8 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else {
+            self.expr_statement();
         }
     }
 

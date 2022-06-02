@@ -99,6 +99,9 @@ impl VM {
                     let value = self.pop()?;
                     println!("{}\n", value);
                 }
+                Opcode::Pop => {
+                    let _ = self.pop();
+                }
             }
         }
     }
