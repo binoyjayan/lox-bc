@@ -18,6 +18,7 @@ pub enum Opcode {
     Less,
     Print,
     Pop,
+    DefineGlobal,
 }
 
 pub struct Chunk {
@@ -99,6 +100,7 @@ impl Chunk {
             Opcode::Less => self.simple_instruction("OP_LT", offset),
             Opcode::Print => self.simple_instruction("OP_PRINT", offset),
             Opcode::Pop => self.simple_instruction("OP_POP", offset),
+            Opcode::DefineGlobal => self.constant_instruction("OP_DEFINE_GLOBAL", offset),
         }
     }
 
@@ -137,6 +139,7 @@ impl From<u8> for Opcode {
             13 => Opcode::Less,
             14 => Opcode::Print,
             15 => Opcode::Pop,
+            16 => Opcode::DefineGlobal,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

@@ -336,6 +336,7 @@ impl<'a> Compiler<'a> {
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
+
         if let Some(prefix_rule) = self.get_rule(self.parser.previous.ttype).prefix {
             prefix_rule(self);
             while precedence <= self.get_rule(self.parser.current.ttype).precedence {
@@ -349,6 +350,27 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /*
+     * Global variables are looked up by name at runtime. Store the identifier
+     * in the constant table and refer to it in instruction by its index.
+     */
+    fn identifier_constant(&mut self, name: String) -> u8 {
+        self.make_constant(Value::Str(name.to_string()))
+    }
+
+    fn parse_variable(&mut self, err_msg: &str) -> u8 {
+        self.consume(TokenType::Identifier, err_msg);
+        self.identifier_constant(self.parser.previous.lexeme.clone())
+    }
+
+    /* Outputs the bytecode instruction that defines the new variable
+     * and store its initial value. The index of the variable's name in
+     * the constant table is the instruction's operand.
+     */
+    fn define_variable(&mut self, global: u8) {
+        self.emit_bytes(Opcode::DefineGlobal, global);
+    }
+
     fn get_rule(&self, ttype: TokenType) -> &ParseRule {
         &self.rules[ttype as usize]
     }
@@ -357,6 +379,26 @@ impl<'a> Compiler<'a> {
     // This subsumes all of the higher-precedence expressions too.
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment)
+    }
+
+    /*
+     * A var keyword is followed by a variable name that is compiled by 'parse_variable'.
+     * Then look for an '=' followed by an initializer expression. Use 'nil' if the user
+     * does not use an initializer. Expect the statement to be terminated with a semicolon.
+     */
+    fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect a variable name.");
+        if self.matches(TokenType::Equal) {
+            self.expression();
+        } else {
+            // 'var a' is equivalent to 'var a = nil'
+            self.emit_byte(Opcode::Nil.into());
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+        self.define_variable(global);
     }
 
     /*
@@ -383,25 +425,31 @@ impl<'a> Compiler<'a> {
             if self.parser.previous.ttype == TokenType::Semicolon {
                 return;
             }
-            if matches!(self.parser.current.ttype,
-                TokenType::Class |
-                TokenType::Fun |
-                TokenType::Var |
-                TokenType::For |
-                TokenType::If |
-                TokenType::While |
-                TokenType::Print |
-                TokenType::Return) {
-                    return;
+            if matches!(
+                self.parser.current.ttype,
+                TokenType::Class
+                    | TokenType::Fun
+                    | TokenType::Var
+                    | TokenType::For
+                    | TokenType::If
+                    | TokenType::While
+                    | TokenType::Print
+                    | TokenType::Return
+            ) {
+                return;
             }
-        self.advance()
+            self.advance()
         }
     }
 
     fn declaration(&mut self) {
-        self.statement();
-        let paniced= *self.parser.panic_mode.borrow();
-        if  paniced {
+        if self.matches(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+        let paniced = *self.parser.panic_mode.borrow();
+        if paniced {
             self.synchronize()
         }
     }
@@ -423,11 +471,11 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn error_at(&self, token: &Token, message: &str) {
-        self.parser.panic_mode.replace(true);
         if *self.parser.panic_mode.borrow() {
             // Do not report errors until the parser synchronizes
             return;
         }
+        self.parser.panic_mode.replace(true);
         eprint!("[line {}] Error", token.line);
         if token.ttype == TokenType::Eof {
             eprint!(" at end");
