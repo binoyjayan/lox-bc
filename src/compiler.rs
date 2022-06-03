@@ -11,7 +11,7 @@ pub struct Compiler<'a> {
     parser: Parser,
     scanner: Scanner,
     chunk: &'a mut Chunk,
-    rules: Vec<ParseRule>,
+    rules: Vec<ParseRule<'a>>,
 }
 
 #[derive(Default)]
@@ -40,16 +40,16 @@ pub struct Parser {
  */
 
 #[derive(Copy, Clone)]
-pub struct ParseRule {
-    prefix: Option<fn(&mut Compiler)>,
-    infix: Option<fn(&mut Compiler)>,
+pub struct ParseRule<'a> {
+    prefix: Option<fn(&mut Compiler<'a>, bool)>,
+    infix: Option<fn(&mut Compiler<'a>, bool)>,
     precedence: Precedence,
 }
 
-impl ParseRule {
+impl<'a> ParseRule<'a> {
     fn new(
-        prefix: Option<fn(&mut Compiler)>,
-        infix: Option<fn(&mut Compiler)>,
+        prefix: Option<fn(&mut Compiler<'a>, bool)>,
+        infix: Option<fn(&mut Compiler<'a>, bool)>,
         precedence: Precedence,
     ) -> Self {
         Self {
@@ -60,71 +60,74 @@ impl ParseRule {
     }
 }
 
-impl Default for ParseRule {
+impl<'a> Default for ParseRule<'a> {
     fn default() -> Self {
         Self::new(None, None, Precedence::None)
     }
 }
 
 impl<'a> Compiler<'a> {
-    fn create_rules() -> Vec<ParseRule> {
+    fn create_rules() -> Vec<ParseRule<'a>> {
         let mut rules: Vec<ParseRule> =
             vec![ParseRule::default(); TokenType::NumberOfTokens as usize];
         rules[TokenType::LeftParen as usize] =
-            ParseRule::new(Some(|c| c.grouping()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::grouping), None, Precedence::None);
         rules[TokenType::RightParen as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::LeftBrace as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::RightBrace as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Comma as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Dot as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Minus as usize] =
-            ParseRule::new(Some(|c| c.unary()), Some(|c| c.binary()), Precedence::Term);
+        rules[TokenType::Minus as usize] = ParseRule::new(
+            Some(Compiler::unary),
+            Some(Compiler::binary),
+            Precedence::Term,
+        );
         rules[TokenType::Plus as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Term);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Term);
         rules[TokenType::Semicolon as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Slash as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Factor);
         rules[TokenType::Star as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Factor);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Factor);
         rules[TokenType::Bang as usize] =
-            ParseRule::new(Some(|c| c.unary()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::unary), None, Precedence::None);
         rules[TokenType::BangEqual as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Equality);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Equality);
         rules[TokenType::Equal as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::EqualEqual as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Equality);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Equality);
         rules[TokenType::Greater as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Comparison);
         rules[TokenType::GreaterEqual as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Comparison);
         rules[TokenType::Less as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Comparison);
         rules[TokenType::LessEqual as usize] =
-            ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Comparison);
         rules[TokenType::Identifier as usize] =
-            ParseRule::new(Some(|c| c.variable()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::variable), None, Precedence::None);
         rules[TokenType::StringLiteral as usize] =
-            ParseRule::new(Some(|c| c.string()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::string), None, Precedence::None);
         rules[TokenType::Number as usize] =
-            ParseRule::new(Some(|c| c.number()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::number), None, Precedence::None);
         rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Class as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Else as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::False as usize] =
-            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::literal), None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::For as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Fun as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::If as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Nil as usize] =
-            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::literal), None, Precedence::None);
         rules[TokenType::Or as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::This as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::True as usize] =
-            ParseRule::new(Some(|c| c.literal()), None, Precedence::None);
+            ParseRule::new(Some(Compiler::literal), None, Precedence::None);
         rules[TokenType::Var as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::While as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Error as usize] = ParseRule::new(None, None, Precedence::None);
@@ -235,7 +238,7 @@ impl<'a> Compiler<'a> {
      * compiles the right operand much like the unary() compiles the trailing operand.
      * Finally, the bytecode instruction that performs the binary operation is emitted.
      */
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let operator_type = self.parser.previous.ttype;
         let rule = self.get_rule(operator_type).precedence.next();
         self.parse_precedence(rule);
@@ -258,7 +261,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         match self.parser.previous.ttype {
             TokenType::Nil => self.emit_byte(Opcode::Nil.into()),
             TokenType::True => self.emit_byte(Opcode::True.into()),
@@ -267,34 +270,55 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, _can_assign: bool) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
     }
 
     // If lox supported escape sequences, it would have been translated here.
-    fn string(&mut self) {
+    fn string(&mut self, _can_assign: bool) {
         // Remove quotes
         let len = self.parser.previous.lexeme.len() - 1;
         let value = self.parser.previous.lexeme[1..len].to_string();
         self.emit_constant(Value::Str(value));
     }
 
-    fn named_variable(&mut self, name: &Token) {
+    /*
+     * In the parse function for identifier expression, look for an equals sign
+     * right after the identifier. If found one, instead of emitting code for
+     * a variable access, compile the assigned value (which is an expression itself)
+     * and emit an assignment instruction.
+     *
+     * RE: assignment statements, if the variable is nested inside some expression
+     * with higher precedence (that needs to be evaluated first), can_assign will be
+     * false and this will ignore the '=' even if there is one. named_variable returns
+     * control to parse_precedence() without the '=' consumed, so that will be the
+     * current token. Now the prefix parser has returned. Now parse_precedence()
+     * enters the infix parser loop and since there is no infix parsing function
+     * associated with '=', it skips the loop. parse_precedence() returns to the
+     * caller silently without consuming the '='. Report error in that case.
+     */
+    fn named_variable(&mut self, name: &Token, can_assign: bool) {
         let arg = self.identifier_constant(name);
-        self.emit_bytes(Opcode::GetGlobal, arg);
+        // Don't consume '=' if can_assign is false
+        if can_assign && self.matches(TokenType::Equal) {
+            self.expression();
+            self.emit_bytes(Opcode::SetGlobal, arg);
+        } else {
+            self.emit_bytes(Opcode::GetGlobal, arg);
+        }
     }
 
-    fn variable(&mut self) {
-        self.named_variable(&self.parser.previous.clone())
+    fn variable(&mut self, can_assign: bool) {
+        self.named_variable(&self.parser.previous.clone(), can_assign)
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let operator_type = self.parser.previous.ttype;
         // compile the operand
         self.parse_precedence(Precedence::Unary);
@@ -342,18 +366,35 @@ impl<'a> Compiler<'a> {
      * crunching through infix operators and their operands until a token is hit
      * that isn't an infix operator or is too low precedence.
      *
+     * Special note about assignment statements:
+     *
+     * To avoid statements such as 'a * b = c + d;'
+     *
+     * Looks for and consume '=' only if it's in the context of a low-precedence
+     * expression. The 'variable()' function doesn't need to know the actual level.
+     * It just cares that the precedence is low enough to allow assignment, so pass
+     * a boolean to indicate that. Since assignment is the lowest-precedence expression,
+     * the only time it is allowed is when parsing an assignment expression or top-level
+     * expression like an expression statement.
      */
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
 
         if let Some(prefix_rule) = self.get_rule(self.parser.previous.ttype).prefix {
-            prefix_rule(self);
+            // Allow variable assignment only if precedence is <= that of assignment
+            let can_assign = precedence <= Precedence::Assignment;
+
+            prefix_rule(self, can_assign);
             while precedence <= self.get_rule(self.parser.current.ttype).precedence {
                 self.advance();
                 if let Some(infix_rule) = self.get_rule(self.parser.previous.ttype).infix {
-                    infix_rule(self);
+                    infix_rule(self, can_assign);
                 }
+            }
+            // Report error if the '=' was not consumed.
+            if can_assign && self.matches(TokenType::Equal) {
+                self.error("Invalid assignment target.");
             }
         } else {
             self.error("Expect expression.");
@@ -381,7 +422,7 @@ impl<'a> Compiler<'a> {
         self.emit_bytes(Opcode::DefineGlobal, global);
     }
 
-    fn get_rule(&self, ttype: TokenType) -> &ParseRule {
+    fn get_rule(&self, ttype: TokenType) -> &ParseRule<'a> {
         &self.rules[ttype as usize]
     }
 
@@ -492,7 +533,7 @@ impl<'a> Compiler<'a> {
         } else if token.ttype == TokenType::Error {
             // Nothing
         } else {
-            eprint!(" at {}", token.lexeme);
+            eprint!(" at '{}'", token.lexeme);
         }
         eprintln!(": {}", message);
         self.parser.had_error.replace(true);

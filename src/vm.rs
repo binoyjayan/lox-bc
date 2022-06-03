@@ -4,6 +4,7 @@ use crate::chunk::*;
 use crate::compiler::*;
 use crate::error::*;
 use crate::value::*;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 pub struct VM {
@@ -120,6 +121,18 @@ impl VM {
                             self.stack.push(v.clone());
                         } else {
                             return Err(self.error_runtime(format!("Undefined variable '{}'.", s)));
+                        }
+                    } else {
+                        panic!("Unable to read constant from table.");
+                    }
+                }
+                Opcode::SetGlobal => {
+                    if let Value::Str(s) = self.read_constant().clone() {
+                        let value = self.peek(0)?.clone();
+                        if let Entry::Occupied(mut o) = self.globals.entry(s.clone()) {
+                            *o.get_mut() = value;
+                        } else {
+                            return Err(self.error_runtime(format!("Undefined variable '{}'", s)));
                         }
                     } else {
                         panic!("Unable to read constant from table.");

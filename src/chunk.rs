@@ -20,6 +20,7 @@ pub enum Opcode {
     Pop,
     DefineGlobal,
     GetGlobal,
+    SetGlobal,
 }
 
 pub struct Chunk {
@@ -102,7 +103,8 @@ impl Chunk {
             Opcode::Print => self.simple_instruction("OP_PRINT", offset),
             Opcode::Pop => self.simple_instruction("OP_POP", offset),
             Opcode::DefineGlobal => self.constant_instruction("OP_DEFINE_GLOBAL", offset),
-            Opcode::GetGlobal => self.constant_instruction("OP_DEFINE_GLOBAL", offset),
+            Opcode::GetGlobal => self.constant_instruction("OP_GET_GLOBAL", offset),
+            Opcode::SetGlobal => self.constant_instruction("OP_SET_GLOBAL", offset),
         }
     }
 
@@ -143,6 +145,7 @@ impl From<u8> for Opcode {
             15 => Opcode::Pop,
             16 => Opcode::DefineGlobal,
             17 => Opcode::GetGlobal,
+            18 => Opcode::SetGlobal,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }
