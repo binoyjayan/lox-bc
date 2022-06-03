@@ -114,6 +114,17 @@ impl VM {
                         panic!("Unable to read global variable");
                     }
                 }
+                Opcode::GetGlobal => {
+                    if let Value::Str(s) = self.read_constant().clone() {
+                        if let Some(v) = self.globals.get(&s) {
+                            self.stack.push(v.clone());
+                        } else {
+                            return Err(self.error_runtime(format!("Undefined variable '{}'.", s)));
+                        }
+                    } else {
+                        panic!("Unable to read constant from table.");
+                    }
+                }
             }
         }
     }

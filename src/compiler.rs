@@ -101,7 +101,8 @@ impl<'a> Compiler<'a> {
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
         rules[TokenType::LessEqual as usize] =
             ParseRule::new(None, Some(|c| c.binary()), Precedence::Comparison);
-        rules[TokenType::Identifier as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Identifier as usize] =
+            ParseRule::new(Some(|c| c.variable()), None, Precedence::None);
         rules[TokenType::StringLiteral as usize] =
             ParseRule::new(Some(|c| c.string()), None, Precedence::None);
         rules[TokenType::Number as usize] =
@@ -284,6 +285,15 @@ impl<'a> Compiler<'a> {
         self.emit_constant(Value::Str(value));
     }
 
+    fn named_variable(&mut self, name: &Token) {
+        let arg = self.identifier_constant(name);
+        self.emit_bytes(Opcode::GetGlobal, arg);
+    }
+
+    fn variable(&mut self) {
+        self.named_variable(&self.parser.previous.clone())
+    }
+
     fn unary(&mut self) {
         let operator_type = self.parser.previous.ttype;
         // compile the operand
@@ -354,13 +364,13 @@ impl<'a> Compiler<'a> {
      * Global variables are looked up by name at runtime. Store the identifier
      * in the constant table and refer to it in instruction by its index.
      */
-    fn identifier_constant(&mut self, name: String) -> u8 {
-        self.make_constant(Value::Str(name.to_string()))
+    fn identifier_constant(&mut self, name: &Token) -> u8 {
+        self.make_constant(Value::Str(name.lexeme.clone()))
     }
 
     fn parse_variable(&mut self, err_msg: &str) -> u8 {
         self.consume(TokenType::Identifier, err_msg);
-        self.identifier_constant(self.parser.previous.lexeme.clone())
+        self.identifier_constant(&self.parser.previous.clone())
     }
 
     /* Outputs the bytecode instruction that defines the new variable
