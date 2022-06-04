@@ -12,6 +12,8 @@ pub struct Compiler<'a> {
     scanner: Scanner,
     chunk: &'a mut Chunk,
     rules: Vec<ParseRule<'a>>,
+    locals: RefCell<Vec<Local>>,
+    scope_depth: usize,
 }
 
 #[derive(Default)]
@@ -44,6 +46,11 @@ pub struct ParseRule<'a> {
     prefix: Option<fn(&mut Compiler<'a>, bool)>,
     infix: Option<fn(&mut Compiler<'a>, bool)>,
     precedence: Precedence,
+}
+
+pub struct Local {
+    name: Token,
+    depth: Option<usize>,
 }
 
 impl<'a> ParseRule<'a> {
@@ -142,6 +149,8 @@ impl<'a> Compiler<'a> {
             scanner: Scanner::new(""),
             chunk,
             rules: Self::create_rules(),
+            locals: RefCell::new(Vec::new()),
+            scope_depth: 0,
         }
     }
 
@@ -232,6 +241,32 @@ impl<'a> Compiler<'a> {
     }
 
     /*
+     * Scopes are created by block statements
+     * In order to create a scope, increment the current depth.
+     * While ending a scope, walk backward through the local
+     * array looking for any variables declared at the scope depth
+     * we just left. Discard them by popping elements.
+     *
+     * Local variables also occupy slots on the stack. When a local
+     * variable goes out of scope, that slot is no longer needed and
+     * should be freed. For each variable that is discarded, also emit
+     * a Pop instruction.
+     */
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+        while self.locals.borrow().len() > 0
+            && self.locals.borrow().last().unwrap().depth.unwrap() > self.scope_depth
+        {
+            self.emit_byte(Opcode::Pop.into());
+            self.locals.borrow_mut().pop();
+        }
+    }
+
+    /*
      * When a prefix parser is called, the leading token has already been consumed.
      * In a binary expression, the left operand gets compiled first and the value
      * ends up on the stack. When the binary operator is encountered, the function
@@ -289,6 +324,24 @@ impl<'a> Compiler<'a> {
     }
 
     /*
+     * While resolving references, check the scope depth to see
+     * if the variable is fully defined. If scope depth is none,
+     * it means that the variable is in the process of initialization.
+     */
+    fn resolve_local(&self, name: &Token) -> Option<u8> {
+        let len = self.locals.borrow().len();
+        for (e, v) in self.locals.borrow().iter().rev().enumerate() {
+            if v.name.lexeme == name.lexeme {
+                if v.depth.is_none() {
+                    self.error("Can't read local variable in its own initializer.");
+                    // TODO: return None?
+                }
+                return Some((len - e - 1) as u8);
+            }
+        }
+        None
+    }
+    /*
      * In the parse function for identifier expression, look for an equals sign
      * right after the identifier. If found one, instead of emitting code for
      * a variable access, compile the assigned value (which is an expression itself)
@@ -304,13 +357,22 @@ impl<'a> Compiler<'a> {
      * caller silently without consuming the '='. Report error in that case.
      */
     fn named_variable(&mut self, name: &Token, can_assign: bool) {
-        let arg = self.identifier_constant(name);
+        let (arg, get_op, set_op) = if let Some(local_arg) = self.resolve_local(name) {
+            (local_arg, Opcode::GetLocal, Opcode::SetLocal)
+        } else {
+            (
+                self.identifier_constant(name),
+                Opcode::GetGlobal,
+                Opcode::SetGlobal,
+            )
+        };
+
         // Don't consume '=' if can_assign is false
         if can_assign && self.matches(TokenType::Equal) {
             self.expression();
-            self.emit_bytes(Opcode::SetGlobal, arg);
+            self.emit_bytes(set_op, arg);
         } else {
-            self.emit_bytes(Opcode::GetGlobal, arg);
+            self.emit_bytes(get_op, arg);
         }
     }
 
@@ -409,16 +471,111 @@ impl<'a> Compiler<'a> {
         self.make_constant(Value::Str(name.lexeme.clone()))
     }
 
+    /*
+     * Add the local variable to the compiler's list of variables
+     * in the current scope.
+     *
+     * This initializes the next available local in the compiler's
+     * array of variables. It stores the variable's name and the depth
+     * of the scope that owns the variable. Also handle error cases.
+     * The first error to handle is a limitation of the VM. The instructions
+     * to work with local variables refer to them by slot index. That index
+     * is stored in a single-byte operand, which means the VM only supports
+     * up to 256 local variables in scope at one time.
+     */
+    fn add_local(&self, name: &Token) {
+        if self.locals.borrow().len() >= 256 {
+            self.error("Too many local variables in function.");
+            return;
+        }
+        let local = Local {
+            name: name.clone(),
+            // variable is not defined fully (yet to compile initializer)
+            depth: None,
+        };
+        self.locals.borrow_mut().push(local);
+    }
+
+    /*
+     * This is the point where the compiler records the existence of
+     * a local variable. This is only done for local but not globals
+     * since globals are late bound (resolved at runtime using by a
+     * a lookup in the hash table). Because of this, the compiler doesn't
+     * keep track of which declarations for them it has seen.
+     *
+     * But for local variables, the compiler does not need to remember
+     * that the variable exists. That's what declaring does - adding it
+     * to the compiler's list of variables in the current scope. It is done
+     * using the function 'add_local()'
+     */
+    fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        let name = self.parser.previous.lexeme.clone();
+        // count number of matches
+        if self
+            .locals
+            .borrow()
+            .iter()
+            .filter(|x| x.name.lexeme == name)
+            .count()
+            != 0
+        {
+            self.error("Already a variable with this name in this scope.");
+        } else {
+            self.add_local(&self.parser.previous);
+        }
+    }
+
+    /*
+     * Variable declaration parsing begins in var_declaration() and relies on a couple
+     * of other functions. First, parse_variable() consumes the identifier token for
+     * the variable name, adds its lexeme to the chunk's constant table as a string,
+     * and then returns the constant table index where it was added. Then, after
+     * var_declaration() compiles the initializer, it calls define_variable() to emit
+     * the bytecode for storing the variable's value in the global variable hash table.
+     *
+     * var_declaration() --> CALL --> parse_variable() --> CONSTANT -->
+     *
+     * COMPILER INITIALIZER --> CALL --> define_variable()
+     *
+     * First "declare" the variable after consuming the identifier token.
+     * Exit the function if we're in a local scope. At runtime, locals aren't
+     * looked up by name. There is no need to stuff the variable name into the
+     * constant table, so if the declaration is inside a local scope, we return
+     * a dummy table index instead.
+     */
     fn parse_variable(&mut self, err_msg: &str) -> u8 {
         self.consume(TokenType::Identifier, err_msg);
+        self.declare_variable();
+
+        // Exit function if inside local scope
+        if self.scope_depth > 0 {
+            return 0;
+        }
         self.identifier_constant(&self.parser.previous.clone())
+    }
+
+    fn mark_initialized(&mut self) {
+        let len = self.locals.borrow_mut().len();
+        self.locals.borrow_mut()[len - 1].depth = Some(self.scope_depth);
     }
 
     /* Outputs the bytecode instruction that defines the new variable
      * and store its initial value. The index of the variable's name in
      * the constant table is the instruction's operand.
+     *
+     * There is no need to create a local variable at runtime. The VM now
+     * has already executed code for the variable's initializer (or the
+     * implicit nil), and that value is sitting on top of the stack as the
+     * only remaining temporary. The temporary becomes the local variable.
      */
     fn define_variable(&mut self, global: u8) {
+        if self.scope_depth > 0 {
+            self.mark_initialized();
+            return;
+        }
         self.emit_bytes(Opcode::DefineGlobal, global);
     }
 
@@ -432,6 +589,12 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::Assignment)
     }
 
+    fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration();
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
+    }
     /*
      * A var keyword is followed by a variable name that is compiled by 'parse_variable'.
      * Then look for an '=' followed by an initializer expression. Use 'nil' if the user
@@ -508,6 +671,10 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else if self.matches(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expr_statement();
         }

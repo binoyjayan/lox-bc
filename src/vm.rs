@@ -138,6 +138,16 @@ impl VM {
                         panic!("Unable to read constant from table.");
                     }
                 }
+                Opcode::GetLocal => {
+                    let slot = self.read_byte() as usize;
+                    // Push the local variable on stack so the latest instruction
+                    // can operate on the operands on the top of the stack
+                    self.stack.push(self.stack[slot].clone());
+                }
+                Opcode::SetLocal => {
+                    let slot = self.read_byte() as usize;
+                    self.stack[slot] = self.peek(0)?.clone();
+                }
             }
         }
     }
@@ -161,10 +171,14 @@ impl VM {
         }
     }
 
-    fn read_opcode(&mut self) -> Opcode {
-        let val: Opcode = self.chunk.read_byte(self.ip).into();
+    fn read_byte(&mut self) -> u8 {
+        let val = self.chunk.read_byte(self.ip);
         self.ip += 1;
         val
+    }
+
+    fn read_opcode(&mut self) -> Opcode {
+        self.read_byte().into()
     }
 
     fn read_constant(&mut self) -> &Value {

@@ -21,6 +21,8 @@ pub enum Opcode {
     DefineGlobal,
     GetGlobal,
     SetGlobal,
+    GetLocal,
+    SetLocal,
 }
 
 pub struct Chunk {
@@ -103,16 +105,24 @@ impl Chunk {
             Opcode::Print => self.simple_instruction("OP_PRINT", offset),
             Opcode::Pop => self.simple_instruction("OP_POP", offset),
             Opcode::DefineGlobal => self.constant_instruction("OP_DEFINE_GLOBAL", offset),
-            Opcode::GetGlobal => self.constant_instruction("OP_GET_GLOBAL", offset),
-            Opcode::SetGlobal => self.constant_instruction("OP_SET_GLOBAL", offset),
+            Opcode::GetGlobal => self.byte_instruction("OP_GET_GLOBAL", offset),
+            Opcode::SetGlobal => self.byte_instruction("OP_SET_GLOBAL", offset),
+            Opcode::GetLocal => self.constant_instruction("OP_GET_LOCAL", offset),
+            Opcode::SetLocal => self.constant_instruction("OP_SET_LOCAL", offset),
         }
+    }
+
+    pub fn byte_instruction(&self, name: &str, offset: usize) -> usize {
+        let slot = self.code[offset + 1];
+        println!("{:-16} {:4}", name, slot);
+        offset + 2
     }
 
     // Print name of opcode followed by looking up the constant using
     // the index to the constant pool and printing the constant.
     fn constant_instruction(&self, name: &str, offset: usize) -> usize {
         let constant = self.code[offset + 1];
-        print!("{:-16}{:4} '", name, constant);
+        print!("{:-16}{:4}", name, constant);
         self.constants.print(constant);
         println!("'");
         offset + 2
@@ -146,6 +156,8 @@ impl From<u8> for Opcode {
             16 => Opcode::DefineGlobal,
             17 => Opcode::GetGlobal,
             18 => Opcode::SetGlobal,
+            19 => Opcode::GetLocal,
+            20 => Opcode::SetLocal,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }
