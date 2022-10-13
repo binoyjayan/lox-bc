@@ -122,7 +122,7 @@ impl Chunk {
     // the index to the constant pool and printing the constant.
     fn constant_instruction(&self, name: &str, offset: usize) -> usize {
         let constant = self.code[offset + 1];
-        print!("{:-16}{:4}", name, constant);
+        print!("{:-16} {:4} '", name, constant);
         self.constants.print(constant);
         println!("'");
         offset + 2

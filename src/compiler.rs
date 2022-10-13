@@ -305,6 +305,10 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    // Parenthesized grouping expression. Parsing function for an expression
+    // type can consume any additional token that it wants to, just like in
+    // a regular recursive descent parser. A Pratt parser isn't a recursive descent
+    // parser but it is still recursive.
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
