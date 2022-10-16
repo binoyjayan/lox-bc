@@ -23,6 +23,7 @@ pub enum Opcode {
     SetGlobal,
     GetLocal,
     SetLocal,
+    JumpIfFalse,
 }
 
 pub struct Chunk {
@@ -45,6 +46,10 @@ impl Chunk {
         self.lines.push(line);
     }
 
+    pub fn write_at(&mut self, offset: usize, byte: u8) {
+        self.code[offset] = byte;
+    }
+
     pub fn read_byte(&self, ip: usize) -> u8 {
         self.code[ip]
     }
@@ -60,6 +65,14 @@ impl Chunk {
 
     pub fn get_line(&self, ip: usize) -> usize {
         self.lines[ip]
+    }
+
+    pub fn count(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn get_jump_offset(&self, offset: usize) -> usize {
+        (((self.code[offset] as u16) << 8) | self.code[offset + 1] as u16) as usize
     }
 
     // pub fn free(&mut self) {
@@ -109,6 +122,7 @@ impl Chunk {
             Opcode::SetGlobal => self.byte_instruction("OP_SET_GLOBAL", offset),
             Opcode::GetLocal => self.constant_instruction("OP_GET_LOCAL", offset),
             Opcode::SetLocal => self.constant_instruction("OP_SET_LOCAL", offset),
+            Opcode::JumpIfFalse => self.jump_instruction("OP_JUMP_IF_FALSE", 1, offset),
         }
     }
 
@@ -116,6 +130,18 @@ impl Chunk {
         let slot = self.code[offset + 1];
         println!("{:-16} {:4}", name, slot);
         offset + 2
+    }
+
+    pub fn jump_instruction(&self, name: &str, sign: i16, offset: usize) -> usize {
+        let jump = self.get_jump_offset(offset + 1);
+        // let jump = (((self.code[offset + 1] as u16) << 8) | self.code[offset + 2] as u16) as usize;
+        let jump_to = if sign == 1 {
+            offset + 3 + jump
+        } else {
+            offset + 3 - jump
+        };
+        println!("{:-16} {:4} -> {}", name, offset, jump_to);
+        offset + 3
     }
 
     // Print name of opcode followed by looking up the constant using
@@ -158,6 +184,7 @@ impl From<u8> for Opcode {
             18 => Opcode::SetGlobal,
             19 => Opcode::GetLocal,
             20 => Opcode::SetLocal,
+            21 => Opcode::JumpIfFalse,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

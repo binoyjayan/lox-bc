@@ -213,6 +213,19 @@ impl<'a> Compiler<'a> {
         self.emit_byte(byte2);
     }
 
+    /*
+     * emit a bytecode instruction and a placeholder operand for the jump offset.
+     * Pass in the opcode as an argument because, there are two different
+     * instructions that uses this helper.
+     */
+    fn emit_jump(&mut self, instruction: Opcode) -> usize {
+        self.emit_byte(instruction.into());
+        // Two byte operand allows upto 65,535 bytes of code.
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        self.chunk.count() - 2
+    }
+
     fn emit_return(&mut self) {
         self.emit_byte(Opcode::Return.into())
     }
@@ -229,6 +242,18 @@ impl<'a> Compiler<'a> {
     fn emit_constant(&mut self, value: Value) {
         let constant = self.make_constant(value);
         self.emit_bytes(Opcode::Constant, constant);
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        // subtract -2 to adjust for the bytecode for the jump offset itself
+        let jump = self.chunk.count() - offset - 2;
+
+        if jump > u16::MAX.into() {
+            self.error("Too much code to jump over.");
+        }
+
+        self.chunk.write_at(offset, ((jump >> 8) & 0xff) as u8);
+        self.chunk.write_at(offset + 1, (jump & 0xff) as u8);
     }
 
     fn end_compiler(&mut self) {
@@ -631,6 +656,31 @@ impl<'a> Compiler<'a> {
         self.emit_byte(Opcode::Pop.into());
     }
 
+    /*
+     * First we compile the condition expression, bracketed by parentheses.
+     * At runtime, that will leave the condition value on the stack.
+     * We'll use that to determine whether to execute the 'then' branch or
+     * to skip it. Then we omit a new JumpIfFalse instruction. It has an operand
+     * for how much to offset the ip - how many bytes of code to skip.
+     * If the condition is falsey, it adjusts the ip by that amount.
+     * While writing the JumpIfFalse instruction's operand the jump offset is
+     * not known. To fix that a trick called backpatching is used. First, emit
+     * the jump instruction with a placeholder for the operand. Keep track of
+     * where the half finished instruction is. Now compile the 'then' body.
+     * Once that is done, we know how far to jump. So, go back and replace the
+     * placeholder offset with the real one.
+     */
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after if.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect '(' after condition.");
+
+        let then_jump = self.emit_jump(Opcode::JumpIfFalse);
+        self.statement();
+
+        self.patch_jump(then_jump);
+    }
+
     fn print_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
@@ -675,6 +725,8 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else if self.matches(TokenType::If) {
+            self.if_statement();
         } else if self.matches(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
