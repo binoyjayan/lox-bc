@@ -154,6 +154,10 @@ impl VM {
                         self.ip += offset;
                     }
                 }
+                Opcode::Jump => {
+                    let offset = self.read_short();
+                    self.ip += offset;
+                }
             }
         }
     }

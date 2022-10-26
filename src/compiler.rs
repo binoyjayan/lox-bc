@@ -669,6 +669,17 @@ impl<'a> Compiler<'a> {
      * where the half finished instruction is. Now compile the 'then' body.
      * Once that is done, we know how far to jump. So, go back and replace the
      * placeholder offset with the real one.
+     *
+     * Control Flow
+     *
+     * condition expression
+     * OP_JUMP_IF_FALSE   ------+
+     * OP_POP                   |
+     * then branch statement    |
+     * OP_JUMP       -----------|------+
+     * OP_POP            <------+      |
+     * else branch statement           |
+     * continue...     <---------------+
      */
     fn if_statement(&mut self) {
         self.consume(TokenType::LeftParen, "Expect '(' after if.");
@@ -676,9 +687,31 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::RightParen, "Expect '(' after condition.");
 
         let then_jump = self.emit_jump(Opcode::JumpIfFalse);
+        /* If the condition is truthy, emit instruction to pop the condition
+         * from the stack, right before the code inside 'then' branch
+         */
+        self.emit_byte(Opcode::Pop.into());
         self.statement();
 
+        /* After executing the then branch, the control flow should continue
+         * after else branch. The else_jump takes care of that.
+         */
+
+        let else_jump = self.emit_jump(Opcode::Jump);
+
         self.patch_jump(then_jump);
+        /* If the condition is falsey, emit instruction to pop the condition
+         * from the stack, right before the code inside 'else' branch.
+         * This little instruction also means that every 'if' statement has
+         * a implicit 'else' branch even if the user did not write an 'else'
+         * clause. In the case where it was left off, all the branch does is
+         * discard the condition value.
+         */
+        self.emit_byte(Opcode::Pop.into());
+        if self.matches(TokenType::Else) {
+            self.statement()
+        }
+        self.patch_jump(else_jump);
     }
 
     fn print_statement(&mut self) {
