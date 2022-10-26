@@ -727,6 +727,117 @@ impl<'a> Compiler<'a> {
     }
 
     /*
+     * In the for loop condition, see if it is actually present. If the clause
+     * is omitted, the next token is the ';'. If there is a condition, compile it.
+     * Then, just like a while loop, emit a conditional jump that exits the loop
+     * if the condition is falsey. Since the jump leaves the value on the stack,
+     * pop the value before executing the body. This ensures that the value is
+     * discarded when the condition is true.
+     *
+     * The increment clause is a bit convoluted. It appears before the body but
+     * executes after it. The increment clause cannot be compiled later, since
+     * the compiler only makes a single pass over the code. Instead, 'jump' over
+     * the increment, run the body, jump back up to the increment, run it, and
+     * then go to the next iteration of the loop. When an increment clause is
+     * present, it needs to be compiled but not executed yet. So, first emit an
+     * unconditional jump that hops over the increment clause's code to the body
+     * of the loop. Next, compile the increment expression itself. Also, emit a
+     * pop to discard the result of the increment clause. As the last step, emit
+     * a loop instruction. This is the main loop that takes the control back to
+     * the top of the for loop - right before the condition expression if there
+     * is one. That loop happens right after the increment, since the increment
+     * executes at the end of each loop iteration. Finally, change the loop_start
+     * to point to the offset where the increment expression begins. Later, when
+     * the loop instruction is emitted, after the body statement, this will cause
+     * it to jump up to the increment expression instead of the top of the loop
+     * like it does when there is no increment.
+     *
+     * Control Flow:
+     *
+     * initializer clause
+     *
+     * condition expression   <------------+
+     *                                     |
+     * OP_JUMP_IF_FALSE  ------+           |
+     * OP_POP                  |           |
+     * OP_JUMP          -------|-----+     |
+     *                         |     |     |
+     * increment expression <--|-----|-----|-----+
+     *                         |     |     |     |
+     * OP_POP                  |     |     |     |
+     * OP_LOOP      -----------|-----|-----+     |
+     *                         |     |           |
+     * body statement <--------|-----+           |
+     *                         |                 |
+     * OP_LOOP       ----------|-----------------+
+     *                         |
+     * OP_POP        <---------+
+     *
+     * continue
+     */
+    fn for_statement(&mut self) {
+        // If a for statement declares a variable, that variable should be
+        // scoped to the loop's body
+        self.begin_scope();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+
+        // Initializer clause
+        if self.matches(TokenType::Semicolon) {
+            // No initializer
+        } else if self.matches(TokenType::Var) {
+            // Initializer has a variable declaration
+            self.var_declaration();
+        } else {
+            // use expression statement instead of expression since it looks for ';'
+            self.expr_statement();
+        }
+
+        // record bytecode offset at the top of the body
+        let mut loop_start = self.chunk.count();
+
+        // Condition clause
+        let exit_jump = if self.matches(TokenType::Semicolon) {
+            None
+        } else {
+            // Condition exists
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect '; after loop condition");
+            // Jump out of the loop if the condition is false
+            let result = self.emit_jump(Opcode::JumpIfFalse);
+            self.emit_byte(Opcode::Pop.into()); // pop condition
+            Some(result)
+        };
+
+        // The increment clause
+        if !self.matches(TokenType::RightParen) {
+            let body_jump = self.emit_jump(Opcode::Jump);
+            let increment_start = self.chunk.count();
+            self.expression(); // increment expression
+            self.emit_byte(Opcode::Pop.into());
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+            // jump that takes control to the top of the main loop
+            self.emit_loop(loop_start);
+            // change the loop_start to the offset where increment expression begins
+            loop_start = increment_start;
+            // patch the unconditional jump to the body of the loop
+            self.patch_jump(body_jump);
+        }
+
+        self.statement();
+        // emit loop instruction after the body
+        self.emit_loop(loop_start);
+
+        // Patch the jump after the loop body if condition clause exists
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump);
+            self.emit_byte(Opcode::Pop.into());
+        }
+
+        self.end_scope();
+    }
+
+    /*
      * First we compile the condition expression, bracketed by parentheses.
      * At runtime, that will leave the condition value on the stack.
      * We'll use that to determine whether to execute the 'then' branch or
@@ -864,6 +975,8 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else if self.matches(TokenType::For) {
+            self.for_statement();
         } else if self.matches(TokenType::If) {
             self.if_statement();
         } else if self.matches(TokenType::While) {
