@@ -101,7 +101,7 @@ impl VM {
                 }
                 Opcode::Print => {
                     let value = self.pop()?;
-                    println!("{}\n", value);
+                    println!("{}", value);
                 }
                 Opcode::Pop => {
                     let _ = self.pop();
