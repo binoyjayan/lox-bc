@@ -117,7 +117,11 @@ impl<'a> Compiler<'a> {
             ParseRule::new(Some(Compiler::string), None, Precedence::None);
         rules[TokenType::Number as usize] =
             ParseRule::new(Some(Compiler::number), None, Precedence::None);
-        rules[TokenType::And as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::And as usize] = ParseRule::new(
+            Some(Compiler::literal),
+            Some(Compiler::and),
+            Precedence::And,
+        );
         rules[TokenType::Class as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Else as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::False as usize] =
@@ -128,7 +132,8 @@ impl<'a> Compiler<'a> {
         rules[TokenType::If as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Nil as usize] =
             ParseRule::new(Some(Compiler::literal), None, Precedence::None);
-        rules[TokenType::Or as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Or as usize] =
+            ParseRule::new(Some(Compiler::literal), Some(Compiler::or), Precedence::Or);
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
@@ -342,6 +347,31 @@ impl<'a> Compiler<'a> {
     fn number(&mut self, _can_assign: bool) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
+    }
+
+    /* In an or expression, if the left-hand side is truthy, then skip over the
+     * right operand. Thus we need to jump when a value is truthy.
+     * When the left-hand side is falsey, do a tiny jump over the next statement.
+     * That statement is an unconditional jump over the code for the right operand.
+     *
+     * Control Flow:
+     *
+     * left operand expression
+     * OP_JUMP_IF_FALSE  ---+
+     * OP_JUMP      --------|------+
+     * OP_POP           <---+      |
+     * right operand expression    |
+     * continue         <----------+
+     */
+    fn or(&mut self, _can_assign: bool) {
+        // jump around the jump
+        let else_jump = self.emit_jump(Opcode::JumpIfFalse);
+        // jump to end of the expression
+        let end_jump = self.emit_jump(Opcode::Jump);
+        self.patch_jump(else_jump);
+        self.emit_byte(Opcode::Pop.into());
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
 
     // If lox supported escape sequences, it would have been translated here.
@@ -606,6 +636,28 @@ impl<'a> Compiler<'a> {
             return;
         }
         self.emit_bytes(Opcode::DefineGlobal, global);
+    }
+
+    /* At the point when this function is called, the left-hand side expression
+     * has already been compiled. That means, at runtime, its value will be on
+     * top of the stack. If that value is falsey, then the entire expression
+     * must be false, so skip the right operand and leave the left-hand side
+     * value as the result of the entire expression. Otherwise, discard the
+     * left-hand value and evaluate the right operand which becomes the
+     * result of the whole 'and' expression.
+     *
+     * Control Flow:
+     * left operand expression
+     * OP_JUMP_IF_FALSE     ------+
+     * OP_POP                     |
+     * right operand expression   |
+     * continue            <------+
+     */
+    fn and(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(Opcode::JumpIfFalse);
+        self.emit_byte(Opcode::Pop.into());
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
     }
 
     fn get_rule(&self, ttype: TokenType) -> &ParseRule<'a> {
