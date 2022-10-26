@@ -158,6 +158,10 @@ impl VM {
                     let offset = self.read_short();
                     self.ip += offset;
                 }
+                Opcode::Loop => {
+                    let offset = self.read_short();
+                    self.ip -= offset;
+                }
             }
         }
     }

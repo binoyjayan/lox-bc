@@ -219,6 +219,24 @@ impl<'a> Compiler<'a> {
     }
 
     /*
+     * The funtion emits a loop instruction, which unconditionally jumps backward
+     * by a given offset. Like the jump instructions, after that we have a 16-bit
+     * operand. We calculate the offset from the instruction we're currently at to
+     * the loop_start point that we want to jump back to. The '+2' is to take into
+     * account the size of the OP_LOOP instruction's own operands which we also
+     * need to jump over.
+     */
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(Opcode::Loop.into());
+        let offset = self.chunk.count() - loop_start + 2;
+        if offset > u16::MAX.into() {
+            self.error("Loop body too large.");
+        }
+        self.emit_byte(((offset >> 8) & 0xff) as u8);
+        self.emit_byte((offset & 0xff) as u8);
+    }
+
+    /*
      * emit a bytecode instruction and a placeholder operand for the jump offset.
      * Pass in the opcode as an argument because, there are two different
      * instructions that uses this helper.
@@ -772,6 +790,42 @@ impl<'a> Compiler<'a> {
         self.emit_byte(Opcode::Print.into());
     }
 
+    /* Works similar to if. Compile the condition surrounded by parantheses.
+     * It is followed by a jump instruction that skips over the subsequent body
+     * of the while statement if the condition is falsey. Patch the jump statement
+     * after compiling the 'while' body and pop the condition value from the stack
+     * on either path. After the body, call the function 'emit_loop' to emit the
+     * 'loop' instruction. This instruction needs to know how far back to jump.
+     * We have already compiled the point in code that we want to jump back to.
+     * It is right before the condition expression. Capture that location while
+     * compiling it.
+     *
+     * Control Flow:
+     *
+     * condtition expression  <----+
+     * OP_JUMP_IF_FALSE ---+       |
+     * OP_POP              |       |
+     * body statement      |       |
+     * OP_LOOP  -----------|------+|
+     * OP_POP        <-----+
+     * continue
+     */
+    fn while_statement(&mut self) {
+        // loop start offset
+        let loop_start = self.chunk.count();
+        self.consume(TokenType::LeftParen, "Expect '(' after while.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let exit_jump = self.emit_jump(Opcode::JumpIfFalse);
+        self.emit_byte(Opcode::Pop.into());
+        self.statement();
+        // emit loop instruction after the body
+        self.emit_loop(loop_start);
+        // Patch the jump after compiling the 'while' body
+        self.patch_jump(exit_jump);
+        self.emit_byte(Opcode::Pop.into());
+    }
+
     fn synchronize(&mut self) {
         self.parser.panic_mode.replace(false);
         while self.parser.current.ttype != TokenType::Eof {
@@ -812,6 +866,8 @@ impl<'a> Compiler<'a> {
             self.print_statement();
         } else if self.matches(TokenType::If) {
             self.if_statement();
+        } else if self.matches(TokenType::While) {
+            self.while_statement();
         } else if self.matches(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
