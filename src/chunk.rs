@@ -35,6 +35,7 @@ pub struct Chunk {
 }
 
 #[derive(PartialEq)]
+#[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
 pub enum JumpStyle {
     Forwards,
     Backwards,
@@ -88,7 +89,7 @@ impl Chunk {
     //     self.lines = Vec::new();
     //     self.constants.free();
     // }
-
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn disassemble_chunk<T: ToString>(&self, name: T) {
         // Display header to know which chunk is being disassembled
         println!("== {} ==", name.to_string());
@@ -99,6 +100,7 @@ impl Chunk {
         }
     }
 
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn disassemble_instruction(&self, offset: usize) -> usize {
         use JumpStyle::*;
         print!("{:04} ", offset);
@@ -137,12 +139,14 @@ impl Chunk {
         }
     }
 
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn byte_instruction(&self, name: &str, offset: usize) -> usize {
         let slot = self.code[offset + 1];
         println!("{:-16} {:4}", name, slot);
         offset + 2
     }
 
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn jump_instruction(&self, name: &str, jump_style: JumpStyle, offset: usize) -> usize {
         let jump = self.get_jump_offset(offset + 1);
         // let jump = (((self.code[offset + 1] as u16) << 8) | self.code[offset + 2] as u16) as usize;
@@ -157,6 +161,7 @@ impl Chunk {
 
     // Print name of opcode followed by looking up the constant using
     // the index to the constant pool and printing the constant.
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     fn constant_instruction(&self, name: &str, offset: usize) -> usize {
         let constant = self.code[offset + 1];
         print!("{:-16} {:4} '", name, constant);
@@ -165,6 +170,7 @@ impl Chunk {
         offset + 2
     }
 
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     fn simple_instruction(&self, name: &str, offset: usize) -> usize {
         println!("{}", name);
         offset + 1

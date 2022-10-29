@@ -116,6 +116,7 @@ impl ValueArray {
     //     self.values = Vec::new();
     // }
 
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn print(&self, idx: u8) {
         print!("{}", self.values[idx as usize]);
     }
