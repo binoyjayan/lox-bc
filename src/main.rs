@@ -3,6 +3,7 @@ extern crate core;
 mod chunk;
 mod compiler;
 mod error;
+mod function;
 mod precedence;
 mod scanner;
 mod token;
