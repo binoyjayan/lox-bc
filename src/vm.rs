@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::chunk::*;
@@ -8,10 +9,26 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 pub struct VM {
-    ip: usize,
     stack: Vec<Value>,
-    chunk: Rc<Chunk>,
+    frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
+}
+
+// An instance of type 'CallFrame' is used for each function call
+struct CallFrame {
+    function: usize,
+    ip: RefCell<usize>,
+    // slots: Vec<usize>,
+    slots: usize,
+}
+
+impl CallFrame {
+    fn inc(&self, amount: usize) {
+        *self.ip.borrow_mut() += amount;
+    }
+    fn dec(&self, amount: usize) {
+        *self.ip.borrow_mut() -= amount;
+    }
 }
 
 impl Default for VM {
@@ -23,9 +40,8 @@ impl Default for VM {
 impl VM {
     pub fn new() -> Self {
         Self {
-            ip: 0,
             stack: Vec::new(),
-            chunk: Rc::new(Chunk::new()),
+            frames: Vec::new(),
             globals: HashMap::new(),
         }
     }
@@ -33,14 +49,36 @@ impl VM {
     pub fn interpret(&mut self, source: &str) -> Result<(), InterpretResult> {
         let mut compiler = Compiler::new();
         let function = compiler.compile(source)?;
-        self.ip = 0;
-        self.chunk = function.get_chunk();
+
+        self.stack.push(Value::Func(function));
+        self.frames.push(CallFrame {
+            function: 0,
+            ip: RefCell::new(0),
+            slots: 0,
+        });
+        // is ip: function.get_chunk().code.len()?
         self.run()
-        // self.chunk.free();
     }
 
     pub fn reset_stack(&mut self) {
         self.stack.clear();
+    }
+
+    fn ip(&self) -> usize {
+        *self.frames.last().unwrap().ip.borrow()
+    }
+
+    fn current_frame(&self) -> &CallFrame {
+        self.frames.last().unwrap()
+    }
+
+    fn chunk(&self) -> Rc<Chunk> {
+        let position = self.frames.last().unwrap().function;
+        if let Value::Func(func) = &self.stack[position] {
+            func.get_chunk()
+        } else {
+            panic!("No chunk in function")
+        }
     }
 
     fn run(&mut self) -> Result<(), InterpretResult> {
@@ -48,7 +86,7 @@ impl VM {
             #[cfg(feature = "debug_trace_execution")]
             {
                 self.print_stack();
-                self.chunk.disassemble_instruction(self.ip);
+                self.chunk().disassemble_instruction(self.ip());
             }
             let instruction: Opcode = self.read_opcode();
             match instruction {
@@ -141,25 +179,27 @@ impl VM {
                     let slot = self.read_byte() as usize;
                     // Push the local variable on stack so the latest instruction
                     // can operate on the operands on the top of the stack
-                    self.stack.push(self.stack[slot].clone());
+                    let slot_offset = self.current_frame().slots;
+                    self.stack.push(self.stack[slot + slot_offset].clone());
                 }
                 Opcode::SetLocal => {
                     let slot = self.read_byte() as usize;
-                    self.stack[slot] = self.peek(0)?.clone();
+                    let slot_offset = self.current_frame().slots;
+                    self.stack[slot + slot_offset] = self.peek(0)?.clone();
                 }
                 Opcode::JumpIfFalse => {
                     let offset = self.read_short();
                     if self.peek(0)?.is_falsey() {
-                        self.ip += offset;
+                        self.current_frame().inc(offset);
                     }
                 }
                 Opcode::Jump => {
                     let offset = self.read_short();
-                    self.ip += offset;
+                    self.current_frame().inc(offset);
                 }
                 Opcode::Loop => {
                     let offset = self.read_short();
-                    self.ip -= offset;
+                    self.current_frame().dec(offset);
                 }
             }
         }
@@ -185,24 +225,24 @@ impl VM {
     }
 
     fn read_byte(&mut self) -> u8 {
-        let val = self.chunk.read_byte(self.ip);
-        self.ip += 1;
+        let val = self.chunk().read_byte(self.ip());
+        self.current_frame().inc(1);
         val
     }
 
     fn read_short(&mut self) -> usize {
-        self.ip += 2;
-        self.chunk.get_jump_offset(self.ip - 2)
+        self.current_frame().inc(2);
+        self.chunk().get_jump_offset(self.ip() - 2)
     }
 
     fn read_opcode(&mut self) -> Opcode {
         self.read_byte().into()
     }
 
-    fn read_constant(&mut self) -> &Value {
-        let index = self.chunk.read_byte(self.ip) as usize;
-        self.ip += 1;
-        self.chunk.get_constant(index)
+    fn read_constant(&mut self) -> Value {
+        let index = self.chunk().read_byte(self.ip()) as usize;
+        self.current_frame().inc(1);
+        self.chunk().get_constant(index)
     }
 
     #[allow(dead_code)]
@@ -240,7 +280,7 @@ impl VM {
      * So, the current instr
      */
     fn error_runtime<T: ToString>(&mut self, err_str: T) -> InterpretResult {
-        let line = self.chunk.get_line(self.ip - 1);
+        let line = self.chunk().get_line(self.ip() - 1);
         eprintln!("{}", err_str.to_string());
         eprintln!("[line {}] in script", line);
         self.reset_stack();

@@ -13,6 +13,7 @@ pub struct Compiler {
     parser: Parser,
     scanner: Scanner,
     chunk: RefCell<Chunk>,
+    #[cfg(feature = "debug_trace_execution")]
     current_function: String,
     rules: Vec<ParseRule>,
     locals: RefCell<Vec<Local>>,
@@ -156,6 +157,7 @@ impl Compiler {
             parser: Parser::default(),
             scanner: Scanner::new(""),
             chunk: RefCell::new(Chunk::new()),
+            #[cfg(feature = "debug_trace_execution")]
             current_function: "<script>".to_string(),
             rules: Self::create_rules(),
             locals: RefCell::new(Vec::new()),
@@ -164,6 +166,11 @@ impl Compiler {
     }
 
     pub fn compile(&mut self, source: &str) -> Result<Function, InterpretResult> {
+        self.locals.borrow_mut().push(Local {
+            name: Token::default(),
+            depth: Some(0),
+        });
+
         self.scanner = Scanner::new(source);
 
         self.advance();

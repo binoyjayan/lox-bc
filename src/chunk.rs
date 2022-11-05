@@ -69,8 +69,8 @@ impl Chunk {
         u8::try_from(idx).ok()
     }
 
-    pub fn get_constant(&self, index: usize) -> &Value {
-        self.constants.read_value(index)
+    pub fn get_constant(&self, index: usize) -> Value {
+        self.constants.read_value(index).clone()
     }
 
     pub fn get_line(&self, ip: usize) -> usize {
