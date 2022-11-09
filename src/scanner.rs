@@ -129,14 +129,14 @@ impl Scanner {
     }
 
     fn number(&mut self) -> Token {
-        while self.peek().is_digit(10) {
+        while self.peek().is_ascii_digit() {
             self.advance();
         }
         // Look for fraction
-        if self.peek() == '.' && self.peek_next().is_digit(10) {
+        if self.peek() == '.' && self.peek_next().is_ascii_digit() {
             // consume '.'
             self.advance();
-            while self.peek().is_digit(10) {
+            while self.peek().is_ascii_digit() {
                 self.advance();
             }
         }
@@ -153,7 +153,7 @@ impl Scanner {
 
     fn peek_is_identifier(&self) -> bool {
         let c = self.peek();
-        c.is_alphabetic() || c.is_digit(10) || c == '_'
+        c.is_alphabetic() || c.is_ascii_digit() || c == '_'
     }
 
     fn identifier_type(&mut self) -> TokenType {

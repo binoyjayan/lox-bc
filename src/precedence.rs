@@ -2,7 +2,7 @@
 
 use std::convert::From;
 
-#[derive(PartialEq, PartialOrd, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Copy, Clone)]
 pub enum Precedence {
     None = 0,
     Assignment, // =

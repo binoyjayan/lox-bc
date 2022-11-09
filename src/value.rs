@@ -102,7 +102,7 @@ impl ops::Neg for Value {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ValueArray {
     values: Vec<Value>,
 }

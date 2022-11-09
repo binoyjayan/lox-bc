@@ -28,14 +28,19 @@ pub enum Opcode {
     Loop,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<usize>,
     constants: ValueArray,
 }
 
-#[derive(PartialEq)]
+pub enum ChunkType {
+    Script,
+    Function,
+}
+
+#[derive(PartialEq, Eq)]
 #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
 pub enum JumpStyle {
     Forwards,

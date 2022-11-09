@@ -10,14 +10,98 @@ use crate::token::*;
 use crate::value::*;
 
 pub struct Compiler {
+    rules: Vec<ParseRule>,
     parser: Parser,
     scanner: Scanner,
-    chunk: RefCell<Chunk>,
-    #[cfg(feature = "debug_trace_execution")]
+    result: RefCell<CompileResult>,
+    #[cfg(feature = "debug_print_code")]
     current_function: String,
-    rules: Vec<ParseRule>,
+}
+
+#[derive(Default)]
+struct CompileResult {
+    chunk: RefCell<Chunk>,
     locals: RefCell<Vec<Local>>,
-    scope_depth: usize,
+    scope_depth: RefCell<usize>,
+}
+
+#[derive(Debug)]
+enum FindResult {
+    Uninitialized,
+    NotFound,
+    Depth(u8),
+}
+
+impl CompileResult {
+    fn locals_len(&self) -> usize {
+        self.locals.borrow().len()
+    }
+
+    fn find_variable(&self, name: &str) -> FindResult {
+        for (e, v) in self.locals.borrow().iter().rev().enumerate() {
+            if v.name.lexeme == *name {
+                if v.depth.is_none() {
+                    return FindResult::Uninitialized;
+                }
+                return FindResult::Depth((self.locals.borrow().len() - e - 1) as u8);
+            }
+        }
+        FindResult::NotFound
+    }
+
+    fn in_scope(&self) -> bool {
+        *self.scope_depth.borrow() != 0
+    }
+
+    fn set_local_scope(&self) {
+        // let len = self.locals.borrow_mut().len();
+        // self.locals.borrow_mut()[len - 1].depth = Some(*self.scope_depth.borrow());
+        let last = self.locals.borrow().len() - 1;
+        let mut locals = self.locals.borrow_mut();
+        locals[last].depth = Some(*self.scope_depth.borrow());
+    }
+
+    fn is_scope_poppable(&self) -> bool {
+        self.locals.borrow().len() > 0
+            && self.locals.borrow().last().unwrap().depth.unwrap() > *self.scope_depth.borrow()
+    }
+
+    fn inc_scope(&self, offset: usize) {
+        *self.scope_depth.borrow_mut() += offset;
+    }
+
+    fn dec_scope(&self, offset: usize) {
+        *self.scope_depth.borrow_mut() -= offset;
+    }
+
+    fn push(&self, local: Local) {
+        self.locals.borrow_mut().push(local)
+    }
+
+    fn pop(&self) {
+        self.locals.borrow_mut().pop();
+    }
+
+    fn write_byte(&self, byte: u8, line: usize) {
+        self.chunk.borrow_mut().write_byte(byte, line)
+    }
+
+    fn count(&self) -> usize {
+        self.chunk.borrow().count()
+    }
+
+    fn add_constant(&self, value: Value) -> Option<u8> {
+        self.chunk.borrow_mut().add_constant(value)
+    }
+
+    fn write_at(&self, offset: usize, byte: u8) {
+        self.chunk.borrow_mut().write_at(offset, byte)
+    }
+
+    #[cfg(feature = "debug_print_code")]
+    fn disassemble_chunk<T: ToString>(&self, name: T) {
+        self.chunk.borrow().disassemble_chunk(name)
+    }
 }
 
 #[derive(Default)]
@@ -154,19 +238,17 @@ impl Compiler {
     }
     pub fn new() -> Self {
         Self {
+            rules: Self::create_rules(),
             parser: Parser::default(),
             scanner: Scanner::new(""),
-            chunk: RefCell::new(Chunk::new()),
-            #[cfg(feature = "debug_trace_execution")]
+            result: RefCell::new(CompileResult::default()),
+            #[cfg(feature = "debug_print_code")]
             current_function: "<script>".to_string(),
-            rules: Self::create_rules(),
-            locals: RefCell::new(Vec::new()),
-            scope_depth: 0,
         }
     }
 
     pub fn compile(&mut self, source: &str) -> Result<Function, InterpretResult> {
-        self.locals.borrow_mut().push(Local {
+        self.result.borrow().push(Local {
             name: Token::default(),
             depth: Some(0),
         });
@@ -183,7 +265,8 @@ impl Compiler {
         if *self.parser.had_error.borrow() {
             Err(InterpretResult::CompileError)
         } else {
-            let chunk = self.chunk.replace(Chunk::new());
+            let result = self.result.replace(CompileResult::default());
+            let chunk = result.chunk.replace(Chunk::new());
             Ok(Function::new(&Rc::new(chunk)))
         }
     }
@@ -222,8 +305,8 @@ impl Compiler {
     }
 
     fn emit_byte(&mut self, byte: u8) {
-        self.chunk
-            .borrow_mut()
+        self.result
+            .borrow()
             .write_byte(byte, self.parser.previous.line)
     }
 
@@ -242,7 +325,7 @@ impl Compiler {
      */
     fn emit_loop(&mut self, loop_start: usize) {
         self.emit_byte(Opcode::Loop.into());
-        let offset = self.chunk.borrow().count() - loop_start + 2;
+        let offset = self.result.borrow().count() - loop_start + 2;
         if offset > u16::MAX.into() {
             self.error("Loop body too large.");
         }
@@ -260,7 +343,7 @@ impl Compiler {
         // Two byte operand allows upto 65,535 bytes of code.
         self.emit_byte(0xff);
         self.emit_byte(0xff);
-        self.chunk.borrow().count() - 2
+        self.result.borrow().count() - 2
     }
 
     fn emit_return(&mut self) {
@@ -268,7 +351,7 @@ impl Compiler {
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
-        if let Some(constant) = self.chunk.borrow_mut().add_constant(value) {
+        if let Some(constant) = self.result.borrow().add_constant(value) {
             constant
         } else {
             self.error("Too many constants in one chunk.");
@@ -283,17 +366,17 @@ impl Compiler {
 
     fn patch_jump(&mut self, offset: usize) {
         // subtract -2 to adjust for the bytecode for the jump offset itself
-        let jump = self.chunk.borrow().count() - offset - 2;
+        let jump = self.result.borrow().count() - offset - 2;
 
         if jump > u16::MAX.into() {
             self.error("Too much code to jump over.");
         }
 
-        self.chunk
-            .borrow_mut()
+        self.result
+            .borrow()
             .write_at(offset, ((jump >> 8) & 0xff) as u8);
-        self.chunk
-            .borrow_mut()
+        self.result
+            .borrow()
             .write_at(offset + 1, (jump & 0xff) as u8);
     }
 
@@ -302,7 +385,7 @@ impl Compiler {
 
         #[cfg(feature = "debug_print_code")]
         if !*self.parser.had_error.borrow() {
-            self.chunk
+            self.result
                 .borrow()
                 .disassemble_chunk(&self.current_function);
         }
@@ -321,16 +404,14 @@ impl Compiler {
      * a Pop instruction.
      */
     fn begin_scope(&mut self) {
-        self.scope_depth += 1;
+        self.result.borrow().inc_scope(1);
     }
 
     fn end_scope(&mut self) {
-        self.scope_depth -= 1;
-        while self.locals.borrow().len() > 0
-            && self.locals.borrow().last().unwrap().depth.unwrap() > self.scope_depth
-        {
+        self.result.borrow().dec_scope(1);
+        while self.result.borrow().is_scope_poppable() {
             self.emit_byte(Opcode::Pop.into());
-            self.locals.borrow_mut().pop();
+            self.result.borrow().pop();
         }
     }
 
@@ -426,17 +507,14 @@ impl Compiler {
      * it means that the variable is in the process of initialization.
      */
     fn resolve_local(&self, name: &Token) -> Option<u8> {
-        let len = self.locals.borrow().len();
-        for (e, v) in self.locals.borrow().iter().rev().enumerate() {
-            if v.name.lexeme == name.lexeme {
-                if v.depth.is_none() {
-                    self.error("Can't read local variable in its own initializer.");
-                    // TODO: return None?
-                }
-                return Some((len - e - 1) as u8);
+        return match self.result.borrow().find_variable(&name.lexeme) {
+            FindResult::Uninitialized => {
+                self.error("Can't read local variable in its own initializer.");
+                None
             }
-        }
-        None
+            FindResult::NotFound => None,
+            FindResult::Depth(d) => Some(d),
+        };
     }
     /*
      * In the parse function for identifier expression, look for an equals sign
@@ -581,7 +659,7 @@ impl Compiler {
      * up to 256 local variables in scope at one time.
      */
     fn add_local(&self, name: &Token) {
-        if self.locals.borrow().len() >= 256 {
+        if self.result.borrow().locals_len() >= 256 {
             self.error("Too many local variables in function.");
             return;
         }
@@ -590,7 +668,7 @@ impl Compiler {
             // variable is not defined fully (yet to compile initializer)
             depth: None,
         };
-        self.locals.borrow_mut().push(local);
+        self.result.borrow().push(local);
     }
 
     /*
@@ -606,19 +684,12 @@ impl Compiler {
      * using the function 'add_local()'
      */
     fn declare_variable(&mut self) {
-        if self.scope_depth == 0 {
+        if !self.result.borrow().in_scope() {
             return;
         }
         let name = self.parser.previous.lexeme.clone();
         // count number of matches
-        if self
-            .locals
-            .borrow()
-            .iter()
-            .filter(|x| x.name.lexeme == name)
-            .count()
-            != 0
-        {
+        if let FindResult::Depth(_d) = self.result.borrow().find_variable(&name) {
             self.error("Already a variable with this name in this scope.");
         } else {
             self.add_local(&self.parser.previous);
@@ -648,15 +719,21 @@ impl Compiler {
         self.declare_variable();
 
         // Exit function if inside local scope
-        if self.scope_depth > 0 {
+        if self.result.borrow().in_scope() {
             return 0;
         }
         self.identifier_constant(&self.parser.previous.clone())
     }
 
+    /*
+     * Mark local variables as initialized. A scope depth of 0 means it
+     * is called for a global (function) declaration. If so do nothing,
+     * as the function is bound to a global variable.
+     */
     fn mark_initialized(&mut self) {
-        let len = self.locals.borrow_mut().len();
-        self.locals.borrow_mut()[len - 1].depth = Some(self.scope_depth);
+        if self.result.borrow().in_scope() {
+            self.result.borrow().set_local_scope();
+        }
     }
 
     /* Outputs the bytecode instruction that defines the new variable
@@ -669,7 +746,7 @@ impl Compiler {
      * only remaining temporary. The temporary becomes the local variable.
      */
     fn define_variable(&mut self, global: u8) {
-        if self.scope_depth > 0 {
+        if self.result.borrow().in_scope() {
             self.mark_initialized();
             return;
         }
@@ -714,6 +791,37 @@ impl Compiler {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block.");
     }
+
+    /*
+     * Parse a function or a method
+     */
+    fn function(&mut self, _chunk_type: ChunkType) {
+        let _compiler = Compiler::new();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
+    }
+
+    /*
+     * Functions are first-class values and are parsed like any other variable
+     * declaration. A function declaration creates and stores one in a newly
+     * declared variable. A function declaration at the top level will bind
+     * the function to a global variable. Inside a block or another function,
+     * a function declaration creates a local variable.
+     *
+     * The helper 'function()' compiles the functions and leaves the object
+     * on stack. 'define_variable()', then stores the function back into
+     * the variable that was defined before. A helper is used here because
+     * it is also reused to compile class methods.
+     */
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect a function name.");
+        self.mark_initialized();
+        self.function(ChunkType::Function);
+        self.define_variable(global);
+    }
+
     /*
      * A var keyword is followed by a variable name that is compiled by 'parse_variable'.
      * Then look for an '=' followed by an initializer expression. Use 'nil' if the user
@@ -814,7 +922,7 @@ impl Compiler {
         }
 
         // record bytecode offset at the top of the body
-        let mut loop_start = self.chunk.borrow().count();
+        let mut loop_start = self.result.borrow().count();
 
         // Condition clause
         let exit_jump = if self.matches(TokenType::Semicolon) {
@@ -832,7 +940,7 @@ impl Compiler {
         // The increment clause
         if !self.matches(TokenType::RightParen) {
             let body_jump = self.emit_jump(Opcode::Jump);
-            let increment_start = self.chunk.borrow().count();
+            let increment_start = self.result.borrow().count();
             self.expression(); // increment expression
             self.emit_byte(Opcode::Pop.into());
             self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
@@ -943,7 +1051,7 @@ impl Compiler {
      */
     fn while_statement(&mut self) {
         // loop start offset
-        let loop_start = self.chunk.borrow().count();
+        let loop_start = self.result.borrow().count();
         self.consume(TokenType::LeftParen, "Expect '(' after while.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -981,7 +1089,9 @@ impl Compiler {
     }
 
     fn declaration(&mut self) {
-        if self.matches(TokenType::Var) {
+        if self.matches(TokenType::Fun) {
+            self.fun_declaration();
+        } else if self.matches(TokenType::Var) {
             self.var_declaration();
         } else {
             self.statement();
