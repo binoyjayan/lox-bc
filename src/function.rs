@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::chunk::*;
 
+#[derive(Default)]
 pub struct Function {
     arity: usize,
     chunk: Rc<Chunk>,
@@ -42,12 +43,16 @@ impl Clone for Function {
 }
 
 impl Function {
-    pub fn new(chunk: &Rc<Chunk>) -> Self {
+    pub fn new<T: ToString>(arity: usize, chunk: &Rc<Chunk>, name: T) -> Self {
         Function {
-            arity: 0,
+            arity,
             chunk: Rc::clone(chunk),
-            name: "".to_string(),
+            name: name.to_string(),
         }
+    }
+
+    pub fn toplevel(chunk: &Rc<Chunk>) -> Self {
+        Self::new(0, chunk, "")
     }
 
     pub fn get_chunk(&self) -> Rc<Chunk> {

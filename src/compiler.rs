@@ -14,8 +14,6 @@ pub struct Compiler {
     parser: Parser,
     scanner: Scanner,
     result: RefCell<CompileResult>,
-    #[cfg(feature = "debug_print_code")]
-    current_function: String,
 }
 
 #[derive(Default)]
@@ -23,6 +21,8 @@ struct CompileResult {
     chunk: RefCell<Chunk>,
     locals: RefCell<Vec<Local>>,
     scope_depth: RefCell<usize>,
+    arity: RefCell<usize>,
+    current_function: RefCell<String>,
 }
 
 #[derive(Debug)]
@@ -33,6 +33,22 @@ enum FindResult {
 }
 
 impl CompileResult {
+    fn new<T: ToString>(name: T) -> Self {
+        Self {
+            current_function: RefCell::new(name.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn get_arity(&self) -> usize {
+        *self.arity.borrow()
+    }
+
+    fn inc_arity(&self, offset: usize) -> usize {
+        *self.arity.borrow_mut() += offset;
+        *self.arity.borrow()
+    }
+
     fn locals_len(&self) -> usize {
         self.locals.borrow().len()
     }
@@ -242,8 +258,6 @@ impl Compiler {
             parser: Parser::default(),
             scanner: Scanner::new(""),
             result: RefCell::new(CompileResult::default()),
-            #[cfg(feature = "debug_print_code")]
-            current_function: "<script>".to_string(),
         }
     }
 
@@ -267,7 +281,7 @@ impl Compiler {
         } else {
             let result = self.result.replace(CompileResult::default());
             let chunk = result.chunk.replace(Chunk::new());
-            Ok(Function::new(&Rc::new(chunk)))
+            Ok(Function::toplevel(&Rc::new(chunk)))
         }
     }
 
@@ -384,10 +398,16 @@ impl Compiler {
         self.emit_return();
 
         #[cfg(feature = "debug_print_code")]
-        if !*self.parser.had_error.borrow() {
-            self.result
-                .borrow()
-                .disassemble_chunk(&self.current_function);
+        {
+            let temp_name = self.result.borrow().current_function.borrow().clone();
+            let function_name = if temp_name.is_empty() {
+                "<script>".to_string()
+            } else {
+                temp_name
+            };
+            if !*self.parser.had_error.borrow() {
+                self.result.borrow().disassemble_chunk(function_name);
+            }
         }
     }
 
@@ -796,11 +816,50 @@ impl Compiler {
      * Parse a function or a method
      */
     fn function(&mut self, _chunk_type: ChunkType) {
-        let _compiler = Compiler::new();
+        let function_name = self.parser.previous.lexeme.clone();
+        let prev_compile_result = self.result.replace(CompileResult::new(function_name));
 
+        // Begin scope does not have a corresponding end scope since the compile result
+        // itself ends upon reaching the end of the function body
+        self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        /* Compile parameters until a right parentheses is found. Semantically,
+         * a parameter is simply a local variable declared in the outermost lexical scope
+         * scope of the of the body of a function. Unlike local variables, there are no
+         * initializers for the parametersas part of the function declaration.
+         */
+
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if self.result.borrow().inc_arity(1) > 255 {
+                    self.error_at_current("Can't have more than 255 parameters.")
+                }
+                let constant = self.parse_variable("Expect parameter name.");
+                self.define_variable(constant);
+                if !self.matches(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
         self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
+
+        self.block();
+
+        self.end_compiler();
+
+        let result = self.result.replace(prev_compile_result);
+
+        let function_arity = self.result.borrow().get_arity();
+        let function_name = result.current_function.borrow().clone();
+
+        if !*self.parser.had_error.borrow() {
+            let chunk = result.chunk.replace(Chunk::new());
+            let function = Function::new(function_arity, &Rc::new(chunk), function_name);
+            let constant = self.make_constant(Value::Func(function));
+            self.emit_bytes(Opcode::Constant, constant);
+        }
     }
 
     /*

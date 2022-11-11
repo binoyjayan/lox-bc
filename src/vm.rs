@@ -56,8 +56,10 @@ impl VM {
             ip: RefCell::new(0),
             slots: 0,
         });
-        // is ip: function.get_chunk().code.len()?
-        self.run()
+        let result = self.run();
+        // TODO: Is this required?
+        let _ = self.pop();
+        result
     }
 
     pub fn reset_stack(&mut self) {
