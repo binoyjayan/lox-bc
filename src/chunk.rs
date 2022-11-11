@@ -26,6 +26,7 @@ pub enum Opcode {
     JumpIfFalse,
     Jump,
     Loop,
+    Call,
 }
 
 #[derive(Clone, Default)]
@@ -96,9 +97,9 @@ impl Chunk {
     //     self.constants.free();
     // }
     #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
-    pub fn disassemble_chunk<T: ToString>(&self, name: T) {
+    pub fn disassemble_chunk<T: Into<String>>(&self, name: T) {
         // Display header to know which chunk is being disassembled
-        println!("== {} ==", name.to_string());
+        println!("== {} ==", name.into());
         let mut offset = 0;
 
         while offset < self.code.len() {
@@ -142,6 +143,7 @@ impl Chunk {
             Opcode::JumpIfFalse => self.jump_instruction("OP_JUMP_IF_FALSE", Forwards, offset),
             Opcode::Jump => self.jump_instruction("OP_JUMP", Forwards, offset),
             Opcode::Loop => self.jump_instruction("OP_LOOP", Backwards, offset),
+            Opcode::Call => self.byte_instruction("OP_CALL", offset),
         }
     }
 
@@ -210,6 +212,7 @@ impl From<u8> for Opcode {
             21 => Opcode::JumpIfFalse,
             22 => Opcode::Jump,
             23 => Opcode::Loop,
+            24 => Opcode::Call,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

@@ -15,8 +15,9 @@ pub struct VM {
 }
 
 // An instance of type 'CallFrame' is used for each function call
+#[derive(Debug)]
 struct CallFrame {
-    function: usize,
+    function: usize, // index into vm.stack
     ip: RefCell<usize>,
     // slots: Vec<usize>,
     slots: usize,
@@ -50,15 +51,12 @@ impl VM {
         let mut compiler = Compiler::new();
         let function = compiler.compile(source)?;
 
-        self.stack.push(Value::Func(function));
-        self.frames.push(CallFrame {
-            function: 0,
-            ip: RefCell::new(0),
-            slots: 0,
-        });
+        self.stack.push(Value::Func(Rc::new(function)));
+        self.call(0);
+
         let result = self.run();
         // TODO: Is this required?
-        let _ = self.pop();
+        // let _ = self.pop();
         result
     }
 
@@ -75,7 +73,7 @@ impl VM {
     }
 
     fn chunk(&self) -> Rc<Chunk> {
-        let position = self.frames.last().unwrap().function;
+        let position = self.current_frame().function;
         if let Value::Func(func) = &self.stack[position] {
             func.get_chunk()
         } else {
@@ -97,8 +95,15 @@ impl VM {
                     self.stack.push(constant);
                 }
                 Opcode::Return => {
-                    // Exit interpreter
-                    return Ok(());
+                    let result = self.pop()?;
+                    let prev_frame = self.frames.pop().unwrap();
+                    if self.frames.is_empty() {
+                        let _ = self.pop();
+                        // Exit interpreter
+                        return Ok(());
+                    }
+                    self.stack.truncate(prev_frame.slots);
+                    self.stack.push(result);
                 }
                 Opcode::Add => {
                     self.binary_op(|a, b| a + b)?;
@@ -182,12 +187,12 @@ impl VM {
                     // Push the local variable on stack so the latest instruction
                     // can operate on the operands on the top of the stack
                     let slot_offset = self.current_frame().slots;
-                    self.stack.push(self.stack[slot + slot_offset].clone());
+                    self.stack.push(self.stack[slot + slot_offset + 1].clone());
                 }
                 Opcode::SetLocal => {
                     let slot = self.read_byte() as usize;
                     let slot_offset = self.current_frame().slots;
-                    self.stack[slot + slot_offset] = self.peek(0)?.clone();
+                    self.stack[slot + slot_offset + 1] = self.peek(0)?.clone();
                 }
                 Opcode::JumpIfFalse => {
                     let offset = self.read_short();
@@ -202,6 +207,14 @@ impl VM {
                 Opcode::Loop => {
                     let offset = self.read_short();
                     self.current_frame().dec(offset);
+                }
+                Opcode::Call => {
+                    let arg_count = self.read_byte() as usize;
+                    // arg_count helps 'call_value()' to find the function on the stack
+                    if !self.call_value(arg_count) {
+                        return Err(InterpretResult::RuntimeError);
+                        // return Err(self.error_runtime("Failed to call function"));
+                    }
                 }
             }
         }
@@ -224,6 +237,60 @@ impl VM {
         } else {
             Ok(self.stack[self.stack.len() - distance - 1].clone())
         }
+    }
+
+    /* Initialize callframe on the stack. Store a pointer to the function
+     * being called and point the frame's ip to the beginning of the
+     * function's bytecode. Finally, setup the slots pointer to give the
+     * frame its window into the stack. The '-1' is for the stack 'slot 0'
+     * which the compiler sets aside for when methods are added later.
+     */
+    fn call(&mut self, arg_count: usize) -> bool {
+        let arity = if let Value::Func(callee) = self.peek(arg_count).unwrap() {
+            callee.get_arity()
+        } else {
+            // shouldn't happen
+            panic!("Can only call functions and classes.");
+        };
+
+        if arity != arg_count {
+            let _ = self.error_runtime(format!(
+                "Expected {} arguments but got {}.",
+                arity, arg_count
+            ));
+            return false;
+        }
+
+        if self.frames.len() == 256 {
+            let _ = self.error_runtime("Stack overflow.");
+            return false;
+        }
+
+        self.frames.push(CallFrame {
+            function: self.stack.len() - arg_count - 1,
+            ip: RefCell::new(0),
+            slots: self.stack.len() - arg_count - 1,
+        });
+
+        true
+    }
+
+    /*
+     * The callee can be found at the offset 'arg_count' from the top
+     * of the stack.
+     */
+    fn call_value(&mut self, arg_count: usize) -> bool {
+        let callee = self.peek(arg_count).unwrap();
+        let result = match callee {
+            Value::Func(_f) => {
+                return self.call(arg_count);
+            }
+            _ => false,
+        };
+        if !result {
+            let _ = self.error_runtime("Can only call functions and classes.");
+        }
+        result
     }
 
     fn read_byte(&mut self) -> u8 {
@@ -281,10 +348,18 @@ impl VM {
      * current line number in source code. 'ip' always points to the next instruction.
      * So, the current instr
      */
-    fn error_runtime<T: ToString>(&mut self, err_str: T) -> InterpretResult {
-        let line = self.chunk().get_line(self.ip() - 1);
-        eprintln!("{}", err_str.to_string());
-        eprintln!("[line {}] in script", line);
+    fn error_runtime<T: Into<String>>(&mut self, err_str: T) -> InterpretResult {
+        eprintln!("{}", err_str.into());
+        for frame in self.frames.iter().rev() {
+            let function = &self.stack[frame.function];
+            let instruction = *frame.ip.borrow() - 1;
+            if let Value::Func(func) = function {
+                let line = func.as_ref().get_chunk().get_line(instruction);
+                eprintln!("[line {}] in {}", line, func.stack_name());
+            } else {
+                panic!("Failed to get stacktrace");
+            }
+        }
         self.reset_stack();
         InterpretResult::RuntimeError
     }

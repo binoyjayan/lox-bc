@@ -33,9 +33,9 @@ enum FindResult {
 }
 
 impl CompileResult {
-    fn new<T: ToString>(name: T) -> Self {
+    fn new<T: Into<String>>(name: T) -> Self {
         Self {
-            current_function: RefCell::new(name.to_string()),
+            current_function: RefCell::new(name.into()),
             ..Default::default()
         }
     }
@@ -115,7 +115,7 @@ impl CompileResult {
     }
 
     #[cfg(feature = "debug_print_code")]
-    fn disassemble_chunk<T: ToString>(&self, name: T) {
+    fn disassemble_chunk<T: Into<String>>(&self, name: T) {
         self.chunk.borrow().disassemble_chunk(name)
     }
 }
@@ -181,8 +181,11 @@ impl Compiler {
     fn create_rules() -> Vec<ParseRule> {
         let mut rules: Vec<ParseRule> =
             vec![ParseRule::default(); TokenType::NumberOfTokens as usize];
-        rules[TokenType::LeftParen as usize] =
-            ParseRule::new(Some(Compiler::grouping), None, Precedence::None);
+        rules[TokenType::LeftParen as usize] = ParseRule::new(
+            Some(Compiler::grouping),
+            Some(Compiler::call),
+            Precedence::Call,
+        );
         rules[TokenType::RightParen as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::LeftBrace as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::RightBrace as usize] = ParseRule::new(None, None, Precedence::None);
@@ -361,6 +364,7 @@ impl Compiler {
     }
 
     fn emit_return(&mut self) {
+        self.emit_byte(Opcode::Nil.into()); // Implicit return
         self.emit_byte(Opcode::Return.into())
     }
 
@@ -463,6 +467,21 @@ impl Compiler {
             TokenType::Slash => self.emit_byte(Opcode::Divide.into()),
             _ => panic!("Unreachable"),
         }
+    }
+
+    /*
+     * A function call expression is similar to an infix '(' operator.
+     * There is a high-precedence  expression on the left for the thing
+     * being called - usually a single identifier. Then the '(' in the middle
+     * followed by the argument expressions separated by commas and a final ')'
+     * to wrap it up at the end. Each argument expression generates code that
+     * leaves its value on stack in preparation for the call. After that, emit
+     * a new OP_CALL instruction to invoke the function, using the argument
+     * count as an operand.
+     */
+    fn call(&mut self, _can_assign: bool) {
+        let arg_count = self.argument_list();
+        self.emit_bytes(Opcode::Call, arg_count);
     }
 
     fn literal(&mut self, _can_assign: bool) {
@@ -773,6 +792,27 @@ impl Compiler {
         self.emit_bytes(Opcode::DefineGlobal, global);
     }
 
+    /* Compile the function or method argument list using a helper
+     */
+    fn argument_list(&mut self) -> u8 {
+        let mut arg_count = 0;
+
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                if arg_count == 255 {
+                    self.error("Can't have more than 255 arguments");
+                }
+                arg_count += 1;
+                if !self.matches(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+        arg_count
+    }
+
     /* At the point when this function is called, the left-hand side expression
      * has already been compiled. That means, at runtime, its value will be on
      * top of the stack. If that value is falsey, then the entire expression
@@ -848,16 +888,16 @@ impl Compiler {
         self.block();
 
         self.end_compiler();
+        let function_arity = self.result.borrow().get_arity();
 
         let result = self.result.replace(prev_compile_result);
 
-        let function_arity = self.result.borrow().get_arity();
         let function_name = result.current_function.borrow().clone();
 
         if !*self.parser.had_error.borrow() {
             let chunk = result.chunk.replace(Chunk::new());
             let function = Function::new(function_arity, &Rc::new(chunk), function_name);
-            let constant = self.make_constant(Value::Func(function));
+            let constant = self.make_constant(Value::Func(Rc::new(function)));
             self.emit_bytes(Opcode::Constant, constant);
         }
     }

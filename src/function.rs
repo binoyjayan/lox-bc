@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::rc::Rc;
 
@@ -43,11 +44,11 @@ impl Clone for Function {
 }
 
 impl Function {
-    pub fn new<T: ToString>(arity: usize, chunk: &Rc<Chunk>, name: T) -> Self {
+    pub fn new<T: Into<String>>(arity: usize, chunk: &Rc<Chunk>, name: T) -> Self {
         Function {
             arity,
             chunk: Rc::clone(chunk),
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
@@ -57,5 +58,17 @@ impl Function {
 
     pub fn get_chunk(&self) -> Rc<Chunk> {
         Rc::clone(&self.chunk)
+    }
+
+    pub fn get_arity(&self) -> usize {
+        self.arity
+    }
+
+    pub fn stack_name(&self) -> &str {
+        if self.name.is_empty() {
+            "<script>"
+        } else {
+            self.name.as_str()
+        }
     }
 }

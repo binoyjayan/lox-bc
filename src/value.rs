@@ -5,6 +5,7 @@
 use crate::function::*;
 use std::fmt;
 use std::ops;
+use std::rc::Rc;
 
 #[derive(PartialEq, PartialOrd)]
 pub enum Value {
@@ -12,7 +13,7 @@ pub enum Value {
     Number(f64),
     Nil,
     Str(String),
-    Func(Function),
+    Func(Rc<Function>),
 }
 
 impl Clone for Value {
