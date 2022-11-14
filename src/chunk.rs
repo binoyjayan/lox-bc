@@ -36,9 +36,16 @@ pub struct Chunk {
     constants: ValueArray,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum ChunkType {
     Script,
     Function,
+}
+
+impl Default for ChunkType {
+    fn default() -> Self {
+        Self::Script
+    }
 }
 
 #[derive(PartialEq, Eq)]

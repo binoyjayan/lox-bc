@@ -23,6 +23,7 @@ struct CompileResult {
     scope_depth: RefCell<usize>,
     arity: RefCell<usize>,
     current_function: RefCell<String>,
+    chunk_type: ChunkType,
 }
 
 #[derive(Debug)]
@@ -33,9 +34,10 @@ enum FindResult {
 }
 
 impl CompileResult {
-    fn new<T: Into<String>>(name: T) -> Self {
+    fn new<T: Into<String>>(name: T, chunk_type: ChunkType) -> Self {
         Self {
             current_function: RefCell::new(name.into()),
+            chunk_type,
             ..Default::default()
         }
     }
@@ -857,7 +859,9 @@ impl Compiler {
      */
     fn function(&mut self, _chunk_type: ChunkType) {
         let function_name = self.parser.previous.lexeme.clone();
-        let prev_compile_result = self.result.replace(CompileResult::new(function_name));
+        let prev_compile_result = self
+            .result
+            .replace(CompileResult::new(function_name, ChunkType::Function));
 
         // Begin scope does not have a corresponding end scope since the compile result
         // itself ends upon reaching the end of the function body
@@ -1128,6 +1132,24 @@ impl Compiler {
         self.emit_byte(Opcode::Print);
     }
 
+    /*
+     * Return value is optional, so the parser looks for a semicolon token
+     * to know if one was provided. If there is no return value, the statement
+     * implicitly returns nil.
+     */
+    fn return_statement(&mut self) {
+        if self.result.borrow().chunk_type == ChunkType::Script {
+            self.error("Can't return from top-level code,")
+        }
+        if self.matches(TokenType::Semicolon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_byte(Opcode::Return);
+        }
+    }
+
     /* Works similar to if. Compile the condition surrounded by parantheses.
      * It is followed by a jump instruction that skips over the subsequent body
      * of the while statement if the condition is falsey. Patch the jump statement
@@ -1208,6 +1230,8 @@ impl Compiler {
             self.for_statement();
         } else if self.matches(TokenType::If) {
             self.if_statement();
+        } else if self.matches(TokenType::Return) {
+            self.return_statement();
         } else if self.matches(TokenType::While) {
             self.while_statement();
         } else if self.matches(TokenType::LeftBrace) {

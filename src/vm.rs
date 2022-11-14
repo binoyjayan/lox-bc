@@ -54,10 +54,9 @@ impl VM {
         self.stack.push(Value::Func(Rc::new(function)));
         self.call(0);
 
-        let result = self.run();
-        // TODO: Is this required?
+        // TODO: Is this required (and self.run() before pop())?
         // let _ = self.pop();
-        result
+        self.run()
     }
 
     pub fn reset_stack(&mut self) {
