@@ -321,14 +321,14 @@ impl Compiler {
         }
     }
 
-    fn emit_byte(&mut self, byte: u8) {
+    fn emit_byte<T: Into<u8>>(&mut self, byte: T) {
         self.result
             .borrow()
-            .write_byte(byte, self.parser.previous.line)
+            .write_byte(byte.into(), self.parser.previous.line)
     }
 
-    fn emit_bytes(&mut self, byte1: Opcode, byte2: u8) {
-        self.emit_byte(byte1.into());
+    fn emit_bytes<T: Into<u8>, U: Into<u8>>(&mut self, byte1: T, byte2: U) {
+        self.emit_byte(byte1);
         self.emit_byte(byte2);
     }
 
@@ -341,7 +341,7 @@ impl Compiler {
      * need to jump over.
      */
     fn emit_loop(&mut self, loop_start: usize) {
-        self.emit_byte(Opcode::Loop.into());
+        self.emit_byte(Opcode::Loop);
         let offset = self.result.borrow().count() - loop_start + 2;
         if offset > u16::MAX.into() {
             self.error("Loop body too large.");
@@ -356,7 +356,7 @@ impl Compiler {
      * instructions that uses this helper.
      */
     fn emit_jump(&mut self, instruction: Opcode) -> usize {
-        self.emit_byte(instruction.into());
+        self.emit_byte(instruction);
         // Two byte operand allows upto 65,535 bytes of code.
         self.emit_byte(0xff);
         self.emit_byte(0xff);
@@ -364,8 +364,8 @@ impl Compiler {
     }
 
     fn emit_return(&mut self) {
-        self.emit_byte(Opcode::Nil.into()); // Implicit return
-        self.emit_byte(Opcode::Return.into())
+        self.emit_byte(Opcode::Nil); // Implicit return
+        self.emit_byte(Opcode::Return)
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
@@ -434,7 +434,7 @@ impl Compiler {
     fn end_scope(&mut self) {
         self.result.borrow().dec_scope(1);
         while self.result.borrow().is_scope_poppable() {
-            self.emit_byte(Opcode::Pop.into());
+            self.emit_byte(Opcode::Pop);
             self.result.borrow().pop();
         }
     }
@@ -453,18 +453,18 @@ impl Compiler {
 
         match operator_type {
             // 'a != b' is same as '!(a == b)'
-            TokenType::BangEqual => self.emit_bytes(Opcode::Equal, Opcode::Not.into()),
-            TokenType::EqualEqual => self.emit_byte(Opcode::Equal.into()),
-            TokenType::Greater => self.emit_byte(Opcode::Greater.into()),
+            TokenType::BangEqual => self.emit_bytes(Opcode::Equal, Opcode::Not),
+            TokenType::EqualEqual => self.emit_byte(Opcode::Equal),
+            TokenType::Greater => self.emit_byte(Opcode::Greater),
             // 'a >= b' is same as '!(a < b)'
-            TokenType::GreaterEqual => self.emit_bytes(Opcode::Less, Opcode::Not.into()),
-            TokenType::Less => self.emit_byte(Opcode::Less.into()),
+            TokenType::GreaterEqual => self.emit_bytes(Opcode::Less, Opcode::Not),
+            TokenType::Less => self.emit_byte(Opcode::Less),
             // 'a <= b' is same as '!(a > b)'
-            TokenType::LessEqual => self.emit_bytes(Opcode::Greater, Opcode::Not.into()),
-            TokenType::Plus => self.emit_byte(Opcode::Add.into()),
-            TokenType::Minus => self.emit_byte(Opcode::Subtract.into()),
-            TokenType::Star => self.emit_byte(Opcode::Multiply.into()),
-            TokenType::Slash => self.emit_byte(Opcode::Divide.into()),
+            TokenType::LessEqual => self.emit_bytes(Opcode::Greater, Opcode::Not),
+            TokenType::Plus => self.emit_byte(Opcode::Add),
+            TokenType::Minus => self.emit_byte(Opcode::Subtract),
+            TokenType::Star => self.emit_byte(Opcode::Multiply),
+            TokenType::Slash => self.emit_byte(Opcode::Divide),
             _ => panic!("Unreachable"),
         }
     }
@@ -486,9 +486,9 @@ impl Compiler {
 
     fn literal(&mut self, _can_assign: bool) {
         match self.parser.previous.ttype {
-            TokenType::Nil => self.emit_byte(Opcode::Nil.into()),
-            TokenType::True => self.emit_byte(Opcode::True.into()),
-            TokenType::False => self.emit_byte(Opcode::False.into()),
+            TokenType::Nil => self.emit_byte(Opcode::Nil),
+            TokenType::True => self.emit_byte(Opcode::True),
+            TokenType::False => self.emit_byte(Opcode::False),
             _ => unreachable!(),
         }
     }
@@ -527,7 +527,7 @@ impl Compiler {
         // jump to end of the expression
         let end_jump = self.emit_jump(Opcode::Jump);
         self.patch_jump(else_jump);
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
         self.parse_precedence(Precedence::Or);
         self.patch_jump(end_jump);
     }
@@ -600,8 +600,8 @@ impl Compiler {
         self.parse_precedence(Precedence::Unary);
 
         match operator_type {
-            TokenType::Minus => self.emit_byte(Opcode::Negate.into()),
-            TokenType::Bang => self.emit_byte(Opcode::Not.into()),
+            TokenType::Minus => self.emit_byte(Opcode::Negate),
+            TokenType::Bang => self.emit_byte(Opcode::Not),
             _ => unimplemented!(),
         }
     }
@@ -830,7 +830,7 @@ impl Compiler {
      */
     fn and(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(Opcode::JumpIfFalse);
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
         self.parse_precedence(Precedence::And);
         self.patch_jump(end_jump);
     }
@@ -932,7 +932,7 @@ impl Compiler {
             self.expression();
         } else {
             // 'var a' is equivalent to 'var a = nil'
-            self.emit_byte(Opcode::Nil.into());
+            self.emit_byte(Opcode::Nil);
         }
         self.consume(
             TokenType::Semicolon,
@@ -950,7 +950,7 @@ impl Compiler {
     fn expr_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after expression.");
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
     }
 
     /*
@@ -1032,7 +1032,7 @@ impl Compiler {
             self.consume(TokenType::Semicolon, "Expect '; after loop condition");
             // Jump out of the loop if the condition is false
             let result = self.emit_jump(Opcode::JumpIfFalse);
-            self.emit_byte(Opcode::Pop.into()); // pop condition
+            self.emit_byte(Opcode::Pop); // pop condition
             Some(result)
         };
 
@@ -1041,7 +1041,7 @@ impl Compiler {
             let body_jump = self.emit_jump(Opcode::Jump);
             let increment_start = self.result.borrow().count();
             self.expression(); // increment expression
-            self.emit_byte(Opcode::Pop.into());
+            self.emit_byte(Opcode::Pop);
             self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
             // jump that takes control to the top of the main loop
             self.emit_loop(loop_start);
@@ -1058,7 +1058,7 @@ impl Compiler {
         // Patch the jump after the loop body if condition clause exists
         if let Some(exit_jump) = exit_jump {
             self.patch_jump(exit_jump);
-            self.emit_byte(Opcode::Pop.into());
+            self.emit_byte(Opcode::Pop);
         }
 
         self.end_scope();
@@ -1098,7 +1098,7 @@ impl Compiler {
         /* If the condition is truthy, emit instruction to pop the condition
          * from the stack, right before the code inside 'then' branch
          */
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
         self.statement();
 
         /* After executing the then branch, the control flow should continue
@@ -1115,7 +1115,7 @@ impl Compiler {
          * clause. In the case where it was left off, all the branch does is
          * discard the condition value.
          */
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
         if self.matches(TokenType::Else) {
             self.statement()
         }
@@ -1125,7 +1125,7 @@ impl Compiler {
     fn print_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
-        self.emit_byte(Opcode::Print.into());
+        self.emit_byte(Opcode::Print);
     }
 
     /* Works similar to if. Compile the condition surrounded by parantheses.
@@ -1155,13 +1155,13 @@ impl Compiler {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
         let exit_jump = self.emit_jump(Opcode::JumpIfFalse);
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
         self.statement();
         // emit loop instruction after the body
         self.emit_loop(loop_start);
         // Patch the jump after compiling the 'while' body
         self.patch_jump(exit_jump);
-        self.emit_byte(Opcode::Pop.into());
+        self.emit_byte(Opcode::Pop);
     }
 
     fn synchronize(&mut self) {
