@@ -4,6 +4,7 @@ use std::rc::Rc;
 use crate::chunk::*;
 use crate::compiler::*;
 use crate::error::*;
+use crate::native::*;
 use crate::value::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -27,6 +28,7 @@ impl CallFrame {
     fn inc(&self, amount: usize) {
         *self.ip.borrow_mut() += amount;
     }
+
     fn dec(&self, amount: usize) {
         *self.ip.borrow_mut() -= amount;
     }
@@ -40,11 +42,14 @@ impl Default for VM {
 
 impl VM {
     pub fn new() -> Self {
-        Self {
+        let mut vm = Self {
             stack: Vec::new(),
             frames: Vec::new(),
             globals: HashMap::new(),
-        }
+        };
+        let native: Rc<dyn NativeFunction> = Rc::new(NativeClock {});
+        vm.define_native("clock", &native);
+        vm
     }
 
     pub fn interpret(&mut self, source: &str) -> Result<(), InterpretResult> {
@@ -186,12 +191,12 @@ impl VM {
                     // Push the local variable on stack so the latest instruction
                     // can operate on the operands on the top of the stack
                     let slot_offset = self.current_frame().slots;
-                    self.stack.push(self.stack[slot + slot_offset + 1].clone());
+                    self.stack.push(self.stack[slot + slot_offset].clone());
                 }
                 Opcode::SetLocal => {
                     let slot = self.read_byte() as usize;
                     let slot_offset = self.current_frame().slots;
-                    self.stack[slot + slot_offset + 1] = self.peek(0)?.clone();
+                    self.stack[slot + slot_offset] = self.peek(0)?.clone();
                 }
                 Opcode::JumpIfFalse => {
                     let offset = self.read_short();
@@ -284,6 +289,13 @@ impl VM {
             Value::Func(_f) => {
                 return self.call(arg_count);
             }
+            Value::Native(f) => {
+                let stack_top = self.stack.len();
+                let result = f.call(arg_count, &self.stack[stack_top - arg_count..stack_top]);
+                self.stack.truncate(stack_top + arg_count + 1);
+                self.stack.push(result);
+                true
+            }
             _ => false,
         };
         if !result {
@@ -361,5 +373,10 @@ impl VM {
         }
         self.reset_stack();
         InterpretResult::RuntimeError
+    }
+
+    fn define_native<T: Into<String>>(&mut self, name: T, function: &Rc<dyn NativeFunction>) {
+        self.globals
+            .insert(name.into(), Value::Native(Rc::clone(function)));
     }
 }

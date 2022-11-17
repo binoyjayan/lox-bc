@@ -35,7 +35,15 @@ enum FindResult {
 
 impl CompileResult {
     fn new<T: Into<String>>(name: T, chunk_type: ChunkType) -> Self {
+        let locals = RefCell::new(Vec::new());
+
+        locals.borrow_mut().push(Local {
+            name: Token::default(),
+            depth: Some(0),
+        });
+
         Self {
+            locals,
             current_function: RefCell::new(name.into()),
             chunk_type,
             ..Default::default()
@@ -72,8 +80,6 @@ impl CompileResult {
     }
 
     fn set_local_scope(&self) {
-        // let len = self.locals.borrow_mut().len();
-        // self.locals.borrow_mut()[len - 1].depth = Some(*self.scope_depth.borrow());
         let last = self.locals.borrow().len() - 1;
         let mut locals = self.locals.borrow_mut();
         locals[last].depth = Some(*self.scope_depth.borrow());
