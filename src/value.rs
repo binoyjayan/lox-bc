@@ -11,7 +11,7 @@ use std::ops;
 use std::rc::Rc;
 
 pub trait NativeFunction {
-    fn call(&self, arg_count: usize, args: &[Value]) -> Value;
+    fn call(&self, arg_count: usize, args: &[Rc<Value>]) -> Value;
 }
 
 #[derive(Debug)]
@@ -109,52 +109,52 @@ impl fmt::Display for Value {
     }
 }
 
-impl ops::Add for Value {
+impl ops::Add for &Value {
     type Output = Value;
 
-    fn add(self, other: Value) -> Value {
+    fn add(self, other: &Value) -> Value {
         match (self, other) {
-            (Value::Number(a), Value::Number(b)) => Value::Number(a + b),
+            (&Value::Number(a), &Value::Number(b)) => Value::Number(a + b),
             _ => panic!("Invalid operation"),
         }
     }
 }
 
-impl ops::Sub for Value {
+impl ops::Sub for &Value {
     type Output = Value;
-    fn sub(self, other: Value) -> Value {
+    fn sub(self, other: &Value) -> Value {
         match (self, other) {
-            (Value::Number(a), Value::Number(b)) => Value::Number(a - b),
+            (&Value::Number(a), &Value::Number(b)) => Value::Number(a - b),
             _ => panic!("Invalid operation"),
         }
     }
 }
 
-impl ops::Mul for Value {
+impl ops::Mul for &Value {
     type Output = Value;
-    fn mul(self, other: Value) -> Value {
+    fn mul(self, other: &Value) -> Value {
         match (self, other) {
-            (Value::Number(a), Value::Number(b)) => Value::Number(a * b),
+            (&Value::Number(a), &Value::Number(b)) => Value::Number(a * b),
             _ => panic!("Invalid operation"),
         }
     }
 }
 
-impl ops::Div for Value {
+impl ops::Div for &Value {
     type Output = Value;
-    fn div(self, other: Value) -> Value {
+    fn div(self, other: &Value) -> Value {
         match (self, other) {
-            (Value::Number(a), Value::Number(b)) => Value::Number(a / b),
+            (&Value::Number(a), &Value::Number(b)) => Value::Number(a / b),
             _ => panic!("Invalid operation"),
         }
     }
 }
 
-impl ops::Neg for Value {
+impl ops::Neg for &Value {
     type Output = Value;
     fn neg(self) -> Value {
         match self {
-            Value::Number(a) => Value::Number(-a),
+            &Value::Number(a) => Value::Number(-a),
             _ => panic!("Invalid operation"),
         }
     }
