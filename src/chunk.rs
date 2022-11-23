@@ -1,35 +1,9 @@
+#[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
+use crate::opcode::*;
 use crate::value::*;
 use std::convert::TryFrom;
 
-pub enum Opcode {
-    Constant,
-    Return,
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Negate,
-    Nil,
-    True,
-    False,
-    Not,
-    Equal,
-    Greater,
-    Less,
-    Print,
-    Pop,
-    DefineGlobal,
-    GetGlobal,
-    SetGlobal,
-    GetLocal,
-    SetLocal,
-    JumpIfFalse,
-    Jump,
-    Loop,
-    Call,
-}
-
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<usize>,
@@ -151,6 +125,9 @@ impl Chunk {
             Opcode::Jump => self.jump_instruction("OP_JUMP", Forwards, offset),
             Opcode::Loop => self.jump_instruction("OP_LOOP", Backwards, offset),
             Opcode::Call => self.byte_instruction("OP_CALL", offset),
+            Opcode::Closure => self.closure_instruction("OP_CLOSURE", offset),
+            Opcode::GetUpvalue => self.byte_instruction("OP_GET_UPVALUE", offset),
+            Opcode::SetUpvalue => self.byte_instruction("OP_SET_UPVALUE", offset),
         }
     }
 
@@ -190,43 +167,35 @@ impl Chunk {
         println!("{}", name);
         offset + 1
     }
-}
 
-impl From<u8> for Opcode {
-    fn from(code: u8) -> Self {
-        match code {
-            0 => Opcode::Constant,
-            1 => Opcode::Return,
-            2 => Opcode::Add,
-            3 => Opcode::Subtract,
-            4 => Opcode::Multiply,
-            5 => Opcode::Divide,
-            6 => Opcode::Negate,
-            7 => Opcode::Nil,
-            8 => Opcode::True,
-            9 => Opcode::False,
-            10 => Opcode::Not,
-            11 => Opcode::Equal,
-            12 => Opcode::Greater,
-            13 => Opcode::Less,
-            14 => Opcode::Print,
-            15 => Opcode::Pop,
-            16 => Opcode::DefineGlobal,
-            17 => Opcode::GetGlobal,
-            18 => Opcode::SetGlobal,
-            19 => Opcode::GetLocal,
-            20 => Opcode::SetLocal,
-            21 => Opcode::JumpIfFalse,
-            22 => Opcode::Jump,
-            23 => Opcode::Loop,
-            24 => Opcode::Call,
-            _ => unimplemented!("Invalid opcode {}", code),
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
+    fn closure_instruction(&self, name: &str, offset: usize) -> usize {
+        let mut i = offset + 1;
+        let constant = self.code[i];
+        i += 1;
+        print!("{:-16} {:4} ", name, constant);
+        self.constants.print(constant);
+        println!();
+        if let Value::Func(function) = self.constants.read_value(constant as usize) {
+            for _ in 0..function.upvalue_count() {
+                let is_local = if self.code[i] == 0 {
+                    "upvalue"
+                } else {
+                    "local"
+                };
+                i += 1;
+                let index = self.code[i];
+                i += 1;
+                println!(
+                    "{:04}      |                     {} {}",
+                    i - 2,
+                    is_local,
+                    index
+                );
+            }
+        } else {
+            panic!("No function at position {}", constant);
         }
-    }
-}
-
-impl From<Opcode> for u8 {
-    fn from(code: Opcode) -> Self {
-        code as u8
+        i
     }
 }

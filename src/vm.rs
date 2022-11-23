@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::chunk::*;
+use crate::closure::*;
 use crate::compiler::*;
 use crate::error::*;
 use crate::native::*;
+use crate::opcode::*;
 use crate::value::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -56,7 +58,9 @@ impl VM {
         let mut compiler = Compiler::new();
         let function = compiler.compile(source)?;
 
-        self.stack.push(Value::Func(Rc::new(function)));
+        // let function = Value::Func(Rc::new(function));
+        let closure = Value::Closure(Rc::new(Closure::new(Rc::new(function))));
+        self.stack.push(closure);
         self.call(0);
 
         // TODO: Is this required (and self.run() before pop())?
@@ -69,7 +73,7 @@ impl VM {
     }
 
     fn ip(&self) -> usize {
-        *self.frames.last().unwrap().ip.borrow()
+        *self.current_frame().ip.borrow()
     }
 
     fn current_frame(&self) -> &CallFrame {
@@ -78,8 +82,8 @@ impl VM {
 
     fn chunk(&self) -> Rc<Chunk> {
         let position = self.current_frame().function;
-        if let Value::Func(func) = &self.stack[position] {
-            func.get_chunk()
+        if let Value::Closure(closure) = &self.stack[position] {
+            closure.get_chunk()
         } else {
             panic!("No chunk in function")
         }
@@ -220,6 +224,17 @@ impl VM {
                         // return Err(self.error_runtime("Failed to call function"));
                     }
                 }
+                Opcode::Closure => {
+                    let constant = self.read_constant().clone();
+                    if let Value::Func(function) = constant {
+                        let closure = Closure::new(function);
+                        self.stack.push(Value::Closure(Rc::new(closure)));
+                    } else {
+                        panic!("Failed to find closure")
+                    }
+                }
+                Opcode::GetUpvalue => {}
+                Opcode::SetUpvalue => {}
             }
         }
     }
@@ -250,11 +265,13 @@ impl VM {
      * which the compiler sets aside for when methods are added later.
      */
     fn call(&mut self, arg_count: usize) -> bool {
-        let arity = if let Value::Func(callee) = self.peek(arg_count).unwrap() {
+        let closure = self.peek(arg_count).unwrap();
+
+        let arity = if let Value::Closure(callee) = closure {
             callee.get_arity()
         } else {
             // shouldn't happen
-            panic!("Can only call functions and classes.");
+            panic!("Can only call functions and classes. {:?}", closure);
         };
 
         if arity != arg_count {
@@ -286,7 +303,7 @@ impl VM {
     fn call_value(&mut self, arg_count: usize) -> bool {
         let callee = self.peek(arg_count).unwrap();
         let result = match callee {
-            Value::Func(_f) => {
+            Value::Closure(_c) => {
                 return self.call(arg_count);
             }
             Value::Native(f) => {
@@ -362,11 +379,10 @@ impl VM {
     fn error_runtime<T: Into<String>>(&mut self, err_str: T) -> InterpretResult {
         eprintln!("{}", err_str.into());
         for frame in self.frames.iter().rev() {
-            let function = &self.stack[frame.function];
-            let instruction = *frame.ip.borrow() - 1;
-            if let Value::Func(func) = function {
-                let line = func.as_ref().get_chunk().get_line(instruction);
-                eprintln!("[line {}] in {}", line, func.stack_name());
+            if let Value::Closure(closure) = &self.stack[frame.function] {
+                let instruction = *frame.ip.borrow() - 1;
+                let line = closure.as_ref().get_chunk().get_line(instruction);
+                eprintln!("[line {}] in {}", line, closure.stack_name());
             } else {
                 panic!("Failed to get stacktrace");
             }

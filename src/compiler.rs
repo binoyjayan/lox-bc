@@ -1,9 +1,11 @@
+use core::panic;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::chunk::*;
 use crate::error::*;
 use crate::function::*;
+use crate::opcode::*;
 use crate::precedence::*;
 use crate::scanner::*;
 use crate::token::*;
@@ -13,7 +15,7 @@ pub struct Compiler {
     rules: Vec<ParseRule>,
     parser: Parser,
     scanner: Scanner,
-    result: RefCell<CompileResult>,
+    result: RefCell<Rc<CompileResult>>,
 }
 
 #[derive(Default)]
@@ -24,12 +26,21 @@ struct CompileResult {
     arity: RefCell<usize>,
     current_function: RefCell<String>,
     chunk_type: ChunkType,
+    enclosing: RefCell<Option<Rc<CompileResult>>>,
+    upvalues: RefCell<Vec<Upvalue>>,
+}
+
+#[derive(PartialEq)]
+struct Upvalue {
+    is_local: bool,
+    index: u8,
 }
 
 #[derive(Debug)]
 enum FindResult {
     Uninitialized,
     NotFound,
+    TooManyVariables,
     Depth(u8),
 }
 
@@ -73,6 +84,107 @@ impl CompileResult {
             }
         }
         FindResult::NotFound
+    }
+
+    /*
+     * While resolving references, check the scope depth to see
+     * if the variable is fully defined. If scope depth is none,
+     * it means that the variable is in the process of initialization.
+     */
+    fn resolve_local(&self, name: &Token) -> Result<Option<u8>, FindResult> {
+        let find_result = self.find_variable(&name.lexeme);
+        match find_result {
+            FindResult::Uninitialized | FindResult::TooManyVariables => Err(find_result),
+            FindResult::NotFound => Ok(None),
+            FindResult::Depth(d) => Ok(Some(d)),
+        }
+    }
+
+    /*
+     * An upvalue refers to a local variable in an enclosing function.
+     * Every closure maintains an array of upvalues, one for each surrounding
+     * local variable that the closure uses. The upvalue points back into the
+     * stack to where the variable it captured lives. When the closure needs
+     * to access a closed-over variable, it goes through the corresponding
+     * upvalue to reach it. When a function declaration is first executed and
+     * a closure is created for it, the VM creates the array of upvalues and
+     * wires them up to “capture” the surrounding local variables that the
+     * closure needs. This function looks for a local variable declared in
+     * any of the surrounding functions. If it finds one, it returns an
+     * "upvalue index" for that variable. Otherwise, it returns None to
+     * indicate the variable wasn’t found. If it was found, the upvalue
+     * instructions are used for reading or writing to the variable.
+     *
+     * If a deeply nested function references a local variable declared
+     * several hops away, we’ll thread it through all of the intermediate
+     * functions by having each function capture an upvalue for the next
+     * function to grab. A function captures—either a local or upvalue—only
+     * from the immediately surrounding function, which is guaranteed to still
+     * be around at the point that the inner function declaration executes.
+     * Implement this by making 'resolve_upvalue()' recursive.
+     */
+    fn resolve_upvalue(&self, name: &Token) -> Result<Option<u8>, FindResult> {
+        if self.enclosing.borrow().is_none() {
+            return Ok(None);
+        }
+
+        // Look for a matching local variable in the enclosing function
+        if let Some(depth) = self
+            .enclosing
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .resolve_local(name)?
+        {
+            return Ok(Some(self.add_upvalue(depth, true)?));
+        }
+
+        /* Look for a local variable beyond the immediately enclosing function.
+         * Do that by recursively calling the function on the enclosing
+         * CompileResult, but not the current one. The innermost recursive call to resolveUpvalue() that finds the local variable will be for the outermost function,
+         */
+
+        match self
+            .enclosing
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .resolve_upvalue(name)?
+        {
+            None => Ok(None),
+            Some(depth) => Ok(Some(self.add_upvalue(depth, false)?)),
+        }
+    }
+
+    /*
+     * The compiler keeps an array of upvalue structures to track the closed-over
+     * identifiers that it has resolved in the body of each function. The indexes
+     * in the compiler’s array match the indexes where upvalues will live in
+     * the Closure object at runtime. This function adds a new upvalue to that
+     * array. It also keeps track of the number of upvalues the function uses.
+     * It stores that count directly in the Function object itself because
+     * that number is also needed for use at runtime. The index field tracks
+     * the closed-over local variable’s slot index. That way the compiler knows
+     * which variable in the enclosing function needs to be captured.
+     * Finally, addUpvalue() returns the index of the created upvalue in the
+     * function’s upvalue list. That index becomes the operand to the
+     * OP_GET_UPVALUE and OP_SET_UPVALUE instructions.
+     */
+    fn add_upvalue(&self, index: u8, is_local: bool) -> Result<u8, FindResult> {
+        let upvalue = Upvalue { index, is_local };
+
+        // Before an upvalue is added, first check to see if the function already
+        // has an upvalue that closes over that variable. If so, return the index.
+        if let Some(pos) = self.upvalues.borrow().iter().position(|x| x == &upvalue) {
+            return Ok(pos as u8);
+        }
+
+        let count = self.upvalues.borrow().len() as u8;
+        if count == u8::MAX.into() {
+            return Err(FindResult::TooManyVariables);
+        }
+        self.upvalues.borrow_mut().push(upvalue);
+        Ok(count)
     }
 
     fn in_scope(&self) -> bool {
@@ -268,7 +380,7 @@ impl Compiler {
             rules: Self::create_rules(),
             parser: Parser::default(),
             scanner: Scanner::new(""),
-            result: RefCell::new(CompileResult::default()),
+            result: RefCell::new(Rc::new(CompileResult::default())),
         }
     }
 
@@ -290,7 +402,7 @@ impl Compiler {
         if *self.parser.had_error.borrow() {
             Err(InterpretResult::CompileError)
         } else {
-            let result = self.result.replace(CompileResult::default());
+            let result = self.result.replace(Rc::new(CompileResult::default()));
             let chunk = result.chunk.replace(Chunk::new());
             Ok(Function::toplevel(&Rc::new(chunk)))
         }
@@ -554,15 +666,27 @@ impl Compiler {
      * it means that the variable is in the process of initialization.
      */
     fn resolve_local(&self, name: &Token) -> Option<u8> {
-        return match self.result.borrow().find_variable(&name.lexeme) {
-            FindResult::Uninitialized => {
+        match self.result.borrow().resolve_local(name) {
+            Err(FindResult::Uninitialized) => {
                 self.error("Can't read local variable in its own initializer.");
                 None
             }
-            FindResult::NotFound => None,
-            FindResult::Depth(d) => Some(d),
-        };
+            Ok(result) => result,
+            _ => panic!("Invalid FindResult"),
+        }
     }
+
+    fn resolve_upvalue(&self, name: &Token) -> Option<u8> {
+        match self.result.borrow().resolve_upvalue(name) {
+            Err(FindResult::TooManyVariables) => {
+                self.error("TODO: error message");
+                None
+            }
+            Ok(val) => val,
+            _ => panic!("Invalid return from resolve_upvalue"),
+        }
+    }
+
     /*
      * In the parse function for identifier expression, look for an equals sign
      * right after the identifier. If found one, instead of emitting code for
@@ -581,6 +705,8 @@ impl Compiler {
     fn named_variable(&mut self, name: &Token, can_assign: bool) {
         let (arg, get_op, set_op) = if let Some(local_arg) = self.resolve_local(name) {
             (local_arg, Opcode::GetLocal, Opcode::SetLocal)
+        } else if let Some(upvalue_arg) = self.resolve_upvalue(name) {
+            (upvalue_arg, Opcode::GetUpvalue, Opcode::SetUpvalue)
         } else {
             (
                 self.identifier_constant(name),
@@ -865,9 +991,15 @@ impl Compiler {
      */
     fn function(&mut self, _chunk_type: ChunkType) {
         let function_name = self.parser.previous.lexeme.clone();
-        let prev_compile_result = self
-            .result
-            .replace(CompileResult::new(function_name, ChunkType::Function));
+        let prev_compile_result = self.result.replace(Rc::new(CompileResult::new(
+            function_name,
+            ChunkType::Function,
+        )));
+
+        self.result
+            .borrow()
+            .enclosing
+            .replace(Some(prev_compile_result));
 
         // Begin scope does not have a corresponding end scope since the compile result
         // itself ends upon reaching the end of the function body
@@ -899,16 +1031,26 @@ impl Compiler {
 
         self.end_compiler();
         let function_arity = self.result.borrow().get_arity();
+        let prev_compile_result = self.result.borrow().enclosing.replace(None).unwrap();
 
         let result = self.result.replace(prev_compile_result);
-
         let function_name = result.current_function.borrow().clone();
+        let upvalue_count = result.upvalues.borrow().len();
 
         if !*self.parser.had_error.borrow() {
             let chunk = result.chunk.replace(Chunk::new());
-            let function = Function::new(function_arity, &Rc::new(chunk), function_name);
+            let function = Function::new(
+                function_arity,
+                &Rc::new(chunk),
+                function_name,
+                upvalue_count,
+            );
             let constant = self.make_constant(Value::Func(Rc::new(function)));
-            self.emit_bytes(Opcode::Constant, constant);
+            self.emit_bytes(Opcode::Closure, constant);
+            for uv in result.upvalues.borrow().iter() {
+                self.emit_byte(if uv.is_local { 1 } else { 0 });
+                self.emit_byte(uv.index);
+            }
         }
     }
 

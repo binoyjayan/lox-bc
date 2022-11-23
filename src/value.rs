@@ -2,6 +2,7 @@
  * A constant pool is an array of values. A LOAD instruction to load
  * a constant looks up the value by index in that array.
  */
+use crate::closure::*;
 use crate::function::*;
 use std::any::Any;
 use std::cmp::Ordering;
@@ -13,6 +14,7 @@ pub trait NativeFunction {
     fn call(&self, arg_count: usize, args: &[Value]) -> Value;
 }
 
+#[derive(Debug)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
@@ -20,6 +22,7 @@ pub enum Value {
     Str(String),
     Func(Rc<Function>),
     Native(Rc<dyn NativeFunction>),
+    Closure(Rc<Closure>),
 }
 
 impl PartialEq for Value {
@@ -75,6 +78,7 @@ impl Clone for Value {
             Value::Str(s) => Value::Str(s.clone()),
             Value::Func(f) => Value::Func(f.clone()),
             Value::Native(f) => Value::Native(f.clone()),
+            Value::Closure(c) => Value::Closure(c.clone()),
         }
     }
 }
@@ -100,6 +104,7 @@ impl fmt::Display for Value {
             Self::Nil => write!(f, "nil"),
             Self::Func(func) => write!(f, "{func}"),
             Value::Native(_f) => write!(f, "<native fn>"),
+            Value::Closure(c) => write!(f, "{}", c),
         }
     }
 }
@@ -155,7 +160,7 @@ impl ops::Neg for Value {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct ValueArray {
     values: Vec<Value>,
 }

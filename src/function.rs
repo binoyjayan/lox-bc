@@ -3,11 +3,12 @@ use std::rc::Rc;
 
 use crate::chunk::*;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Function {
     arity: usize,
     chunk: Rc<Chunk>,
     name: String,
+    upvalue_count: usize,
 }
 
 impl PartialOrd for Function {
@@ -38,21 +39,28 @@ impl Clone for Function {
             arity: self.arity,
             chunk: self.chunk.clone(),
             name: self.name.clone(),
+            upvalue_count: self.upvalue_count,
         }
     }
 }
 
 impl Function {
-    pub fn new<T: Into<String>>(arity: usize, chunk: &Rc<Chunk>, name: T) -> Self {
+    pub fn new<T: Into<String>>(
+        arity: usize,
+        chunk: &Rc<Chunk>,
+        name: T,
+        upvalue_count: usize,
+    ) -> Self {
         Function {
             arity,
             chunk: Rc::clone(chunk),
             name: name.into(),
+            upvalue_count,
         }
     }
 
     pub fn toplevel(chunk: &Rc<Chunk>) -> Self {
-        Self::new(0, chunk, "")
+        Self::new(0, chunk, "", 0)
     }
 
     pub fn get_chunk(&self) -> Rc<Chunk> {
@@ -69,5 +77,10 @@ impl Function {
         } else {
             self.name.as_str()
         }
+    }
+
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
+    pub fn upvalue_count(&self) -> usize {
+        self.upvalue_count
     }
 }

@@ -1,10 +1,12 @@
 extern crate core;
 
 mod chunk;
+mod closure;
 mod compiler;
 mod error;
 mod function;
 mod native;
+mod opcode;
 mod precedence;
 mod scanner;
 mod token;
@@ -86,16 +88,36 @@ mod tests {
 
     #[test]
     fn function1_for() {
-        run_test("./examples/function1-for.lox", true);
+        run_test("./examples/function-for.lox", true);
     }
 
     #[test]
-    fn function2_broken() {
-        run_test("./examples/function2-broken.lox", false);
+    fn function_broken() {
+        run_test("./examples/function-broken.lox", false);
     }
 
     #[test]
-    fn function3_fibonacci() {
+    fn function_fibonacci() {
         run_test("./examples/function3-fib.lox", true);
+    }
+
+    #[test]
+    fn closures_simple() {
+        run_test("./examples/closure-simple.lox", true);
+    }
+
+    #[test]
+    fn closures_make() {
+        run_test("./examples/closure-make.lox", false);
+    }
+
+    #[test]
+    fn closures_bake() {
+        run_test("./examples/closure-bake.lox", false);
+    }
+
+    #[test]
+    fn closures_inner_outer() {
+        run_test(".examples/closures-inner-outer.lox", false);
     }
 }
