@@ -10,6 +10,7 @@ mod opcode;
 mod precedence;
 mod scanner;
 mod token;
+mod upvalue;
 mod value;
 mod vm;
 
@@ -98,26 +99,36 @@ mod tests {
 
     #[test]
     fn function_fibonacci() {
-        run_test("./examples/function3-fib.lox", true);
+        run_test("./examples/function-fibonacci.lox", true);
     }
 
     #[test]
-    fn closures_simple() {
+    fn closure_simple() {
         run_test("./examples/closure-simple.lox", true);
     }
 
     #[test]
-    fn closures_make() {
-        run_test("./examples/closure-make.lox", false);
+    fn closure_bake() {
+        run_test("./examples/closure-bake.lox", true);
     }
 
     #[test]
-    fn closures_bake() {
-        run_test("./examples/closure-bake.lox", false);
+    fn closure_outer() {
+        run_test("./examples/closure-outer.lox", true);
     }
 
     #[test]
-    fn closures_inner_outer() {
-        run_test(".examples/closures-inner-outer.lox", false);
+    fn closure_closed_upvalues() {
+        run_test("./examples/closure-closed-upvalues.lox", true);
+    }
+
+    #[test]
+    fn closure_inner_outer() {
+        run_test("./examples/closure-inner-outer.lox", true);
+    }
+
+    #[test]
+    fn closure_deviousr() {
+        run_test("./examples/closure-devious.lox", true);
     }
 }

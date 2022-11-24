@@ -27,11 +27,11 @@ struct CompileResult {
     current_function: RefCell<String>,
     chunk_type: ChunkType,
     enclosing: RefCell<Option<Rc<CompileResult>>>,
-    upvalues: RefCell<Vec<Upvalue>>,
+    upvalues: RefCell<Vec<UpvalueData>>,
 }
 
 #[derive(PartialEq)]
-struct Upvalue {
+struct UpvalueData {
     is_local: bool,
     index: u8,
 }
@@ -171,7 +171,7 @@ impl CompileResult {
      * OP_GET_UPVALUE and OP_SET_UPVALUE instructions.
      */
     fn add_upvalue(&self, index: u8, is_local: bool) -> Result<u8, FindResult> {
-        let upvalue = Upvalue { index, is_local };
+        let upvalue = UpvalueData { index, is_local };
 
         // Before an upvalue is added, first check to see if the function already
         // has an upvalue that closes over that variable. If so, return the index.
@@ -180,7 +180,7 @@ impl CompileResult {
         }
 
         let count = self.upvalues.borrow().len() as u8;
-        if count == u8::MAX.into() {
+        if count == u8::MAX {
             return Err(FindResult::TooManyVariables);
         }
         self.upvalues.borrow_mut().push(upvalue);
@@ -1048,7 +1048,7 @@ impl Compiler {
             let constant = self.make_constant(Value::Func(Rc::new(function)));
             self.emit_bytes(Opcode::Closure, constant);
             for uv in result.upvalues.borrow().iter() {
-                self.emit_byte(if uv.is_local { 1 } else { 0 });
+                self.emit_byte(u8::from(uv.is_local));
                 self.emit_byte(uv.index);
             }
         }

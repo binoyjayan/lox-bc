@@ -1,8 +1,11 @@
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
 use crate::chunk::*;
 use crate::function::*;
+use crate::upvalue::*;
+use crate::value::*;
 
 /*
  * Aside from global variables, a function have no way to reference a variable
@@ -45,6 +48,7 @@ use crate::function::*;
 pub struct Closure {
     function: Rc<Function>,
     // captured variables go here
+    upvalues: RefCell<Vec<Rc<Upvalue>>>,
 }
 
 impl fmt::Display for Closure {
@@ -57,6 +61,7 @@ impl Closure {
     pub fn new(function: Rc<Function>) -> Self {
         Self {
             function: Rc::clone(&function),
+            upvalues: RefCell::new(Vec::new()),
         }
     }
     pub fn get_arity(&self) -> usize {
@@ -69,5 +74,19 @@ impl Closure {
 
     pub fn stack_name(&self) -> &str {
         self.function.stack_name()
+    }
+
+    pub fn get_upvalue(&self, offset: usize) -> Rc<Value> {
+        Rc::clone(&self.upvalues.borrow()[offset]).get_value()
+    }
+
+    pub fn push_upvalue(&self, value: &Rc<Value>) {
+        self.upvalues
+            .borrow_mut()
+            .push(Rc::new(Upvalue::new(value)));
+    }
+
+    pub fn set_upvalue(&self, offset: usize, value: &Rc<Value>) {
+        self.upvalues.borrow_mut()[offset] = Rc::new(Upvalue::new(value))
     }
 }

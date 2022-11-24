@@ -21,8 +21,8 @@ pub struct VM {
 // An instance of type 'CallFrame' is used for each function call
 #[derive(Debug)]
 struct CallFrame {
-    function: usize, // index into vm.stack
-    ip: RefCell<usize>,    
+    closure: usize, // index into vm.stack
+    ip: RefCell<usize>,
     slots: usize,
 }
 
@@ -63,7 +63,7 @@ impl VM {
         self.call(0);
 
         // TODO: Is this required?
-        // self.run(); let _ = self.pop(); 
+        // self.run(); let _ = self.pop();
         self.run()
     }
 
@@ -79,8 +79,30 @@ impl VM {
         self.frames.last().unwrap()
     }
 
+    fn get_upvalue(&self, offset: usize) -> Rc<Value> {
+        let position = self.current_frame().closure;
+        if let Value::Closure(closure) = &self.stack[position].deref() {
+            closure.get_upvalue(offset)
+        } else {
+            panic!("No upvalue in function")
+        }
+    }
+
+    fn set_upvalue(&self, offset: usize, value: &Rc<Value>) {
+        let position = self.current_frame().closure;
+        if let Value::Closure(closure) = &self.stack[position].deref() {
+            closure.set_upvalue(offset, value);
+        } else {
+            panic!("No upvalue in function")
+        }
+    }
+
+    fn capture_upvalue(&self, offset: usize) -> Rc<Value> {
+        Rc::clone(&self.stack[offset])
+    }
+
     fn chunk(&self) -> Rc<Chunk> {
-        let position = self.current_frame().function;
+        let position = self.current_frame().closure;
         if let Value::Closure(closure) = &self.stack[position].deref() {
             closure.get_chunk()
         } else {
@@ -168,7 +190,8 @@ impl VM {
                 Opcode::GetGlobal => {
                     if let Value::Str(s) = self.read_constant().clone() {
                         if let Some(v) = self.globals.get(&s) {
-                            self.push(v.clone());
+                            let u = v.clone();
+                            self.push(u);
                         } else {
                             return Err(self.error_runtime(format!("Undefined variable '{}'.", s)));
                         }
@@ -223,17 +246,18 @@ impl VM {
                         // return Err(self.error_runtime("Failed to call function"));
                     }
                 }
-                Opcode::Closure => {
-                    let constant = self.read_constant().clone();
-                    if let Value::Func(function) = constant {
-                        let closure = Closure::new(function);
-                        self.push(Value::Closure(Rc::new(closure)));
-                    } else {
-                        panic!("Failed to find closure")
-                    }
+                Opcode::Closure => self.closure_op(),
+                // operand to the instruction is the index into the current function's
+                // upvalue array. So, lookup the corresponding upvalue using the index
+                Opcode::GetUpvalue => {
+                    let slot = self.read_byte() as usize;
+                    self.stack.push(Rc::clone(&self.get_upvalue(slot)))
                 }
-                Opcode::GetUpvalue => {}
-                Opcode::SetUpvalue => {}
+                Opcode::SetUpvalue => {
+                    let slot = self.read_byte() as usize;
+                    let value = self.peek(0)?;
+                    self.set_upvalue(slot, value);
+                }
             }
         }
     }
@@ -257,6 +281,42 @@ impl VM {
             panic!("Stack underflow");
         } else {
             Ok(&self.stack[self.stack.len() - distance - 1])
+        }
+    }
+
+    /*
+     * Fill the upvalue array over in the interpreter when it creates
+     * a closure. This is where all of the operands after OP_CLOSURE is walked
+     * through to see what kind of upvalue each slot captures. Iterate over
+     * each upvalue the closure expects. For each one, read a pair of operand
+     * bytes. If the upvalue closes over a local variable in the enclosing
+     * function, let capture_upvalue() do the work. Otherwise, capture
+     * an upvalue from the surrounding function. An OP_CLOSURE instruction is
+     * emitted at the end of a function declaration. While executing that
+     * declaration, the current function is the surrounding one. That means the
+     * current function’s closure is stored in the CallFrame at the top of the
+     * callstack. So, to grab an upvalue from the enclosing function, read it
+     * from the frame local variable, which caches a reference to that CallFrame.
+     */
+    fn closure_op(&mut self) {
+        let constant = self.read_constant();
+        if let Value::Func(function) = constant {
+            let upvalue_count = function.upvalue_count();
+            let closure = Closure::new(function);
+            for _ in 0..upvalue_count {
+                let is_local = self.read_byte() != 0;
+                let index = self.read_byte() as usize;
+                let captured = if is_local {
+                    let offset = self.current_frame().slots + index;
+                    self.capture_upvalue(offset)
+                } else {
+                    self.get_upvalue(index)
+                };
+                closure.push_upvalue(&captured);
+            }
+            self.push(Value::Closure(Rc::new(closure)));
+        } else {
+            panic!("Failed to find closure")
         }
     }
 
@@ -290,7 +350,7 @@ impl VM {
         }
 
         self.frames.push(CallFrame {
-            function: self.stack.len() - arg_count - 1,
+            closure: self.stack.len() - arg_count - 1,
             ip: RefCell::new(0),
             slots: self.stack.len() - arg_count - 1,
         });
@@ -381,7 +441,7 @@ impl VM {
     fn error_runtime<T: Into<String>>(&mut self, err_str: T) -> InterpretResult {
         eprintln!("{}", err_str.into());
         for frame in self.frames.iter().rev() {
-            if let Value::Closure(closure) = &self.stack[frame.function].deref() {
+            if let Value::Closure(closure) = &self.stack[frame.closure].deref() {
                 let instruction = *frame.ip.borrow() - 1;
                 let line = closure.as_ref().get_chunk().get_line(instruction);
                 eprintln!("[line {}] in {}", line, closure.stack_name());

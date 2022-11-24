@@ -79,7 +79,7 @@ impl Function {
         }
     }
 
-    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
+    // #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn upvalue_count(&self) -> usize {
         self.upvalue_count
     }
