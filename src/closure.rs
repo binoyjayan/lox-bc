@@ -76,17 +76,17 @@ impl Closure {
         self.function.stack_name()
     }
 
-    pub fn get_upvalue(&self, offset: usize) -> Rc<Value> {
+    pub fn get_upvalue(&self, offset: usize) -> Rc<RefCell<Value>> {
         Rc::clone(&self.upvalues.borrow()[offset]).get_value()
     }
 
-    pub fn push_upvalue(&self, value: &Rc<Value>) {
+    pub fn push_upvalue(&self, value: &Rc<RefCell<Value>>) {
         self.upvalues
             .borrow_mut()
             .push(Rc::new(Upvalue::new(value)));
     }
 
-    pub fn set_upvalue(&self, offset: usize, value: &Rc<Value>) {
-        self.upvalues.borrow_mut()[offset] = Rc::new(Upvalue::new(value))
+    pub fn set_upvalue(&self, offset: usize, value: &Rc<RefCell<Value>>) {
+        self.upvalues.borrow_mut()[offset].set_value(value)
     }
 }

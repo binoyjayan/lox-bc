@@ -5,13 +5,14 @@
 use crate::closure::*;
 use crate::function::*;
 use std::any::Any;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops;
 use std::rc::Rc;
 
 pub trait NativeFunction {
-    fn call(&self, arg_count: usize, args: &[Rc<Value>]) -> Value;
+    fn call(&self, arg_count: usize, args: &[Rc<RefCell<Value>>]) -> Value;
 }
 
 #[derive(Debug)]

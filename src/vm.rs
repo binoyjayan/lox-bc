@@ -13,7 +13,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 pub struct VM {
-    stack: Vec<Rc<Value>>,
+    stack: Vec<Rc<RefCell<Value>>>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
 }
@@ -79,31 +79,31 @@ impl VM {
         self.frames.last().unwrap()
     }
 
-    fn get_upvalue(&self, offset: usize) -> Rc<Value> {
+    fn get_upvalue(&self, offset: usize) -> Rc<RefCell<Value>> {
         let position = self.current_frame().closure;
-        if let Value::Closure(closure) = &self.stack[position].deref() {
+        if let Value::Closure(closure) = &self.stack[position].borrow().deref() {
             closure.get_upvalue(offset)
         } else {
             panic!("No upvalue in function")
         }
     }
 
-    fn set_upvalue(&self, offset: usize, value: &Rc<Value>) {
+    fn set_upvalue(&self, offset: usize, value: &Rc<RefCell<Value>>) {
         let position = self.current_frame().closure;
-        if let Value::Closure(closure) = &self.stack[position].deref() {
+        if let Value::Closure(closure) = &self.stack[position].borrow().deref() {
             closure.set_upvalue(offset, value);
         } else {
             panic!("No upvalue in function")
         }
     }
 
-    fn capture_upvalue(&self, offset: usize) -> Rc<Value> {
+    fn capture_upvalue(&self, offset: usize) -> Rc<RefCell<Value>> {
         Rc::clone(&self.stack[offset])
     }
 
     fn chunk(&self) -> Rc<Chunk> {
         let position = self.current_frame().closure;
-        if let Value::Closure(closure) = &self.stack[position].deref() {
+        if let Value::Closure(closure) = &self.stack[position].borrow().deref() {
             closure.get_chunk()
         } else {
             panic!("No chunk in function")
@@ -147,17 +147,17 @@ impl VM {
                     self.binary_op(|a, b| a / b)?;
                 }
                 Opcode::Negate => {
-                    if !self.peek(0)?.is_number() {
+                    if !self.peek(0)?.borrow().is_number() {
                         return Err(self.error_runtime("Operand must be a number"));
                     }
-                    let value = self.pop()?.clone();
-                    self.push(-(value.deref()));
+                    let value = self.pop()?.borrow().clone();
+                    self.push(-&value);
                 }
                 Opcode::Nil => self.push(Value::Nil),
                 Opcode::False => self.push(Value::Boolean(false)),
                 Opcode::True => self.push(Value::Boolean(true)),
                 Opcode::Not => {
-                    let value = self.pop()?;
+                    let value = self.pop()?.borrow().clone();
                     self.push(Value::Boolean(value.is_falsey()))
                 }
                 Opcode::Equal => {
@@ -172,7 +172,7 @@ impl VM {
                     self.binary_op(|a, b| Value::Boolean(a < b))?;
                 }
                 Opcode::Print => {
-                    let value = self.pop()?;
+                    let value = self.pop()?.borrow().clone();
                     println!("{}", value);
                 }
                 Opcode::Pop => {
@@ -182,7 +182,7 @@ impl VM {
                     let name = self.read_constant().clone();
                     if let Value::Str(s) = name {
                         let value = self.pop()?;
-                        self.globals.insert(s, value.deref().clone());
+                        self.globals.insert(s, value.borrow().clone());
                     } else {
                         panic!("Unable to read global variable");
                     }
@@ -201,10 +201,9 @@ impl VM {
                 }
                 Opcode::SetGlobal => {
                     if let Value::Str(s) = self.read_constant().clone() {
-                        let value = self.peek(0)?;
-                        let derefed = value.deref().clone();
+                        let value = self.peek(0)?.borrow().clone();
                         if let Entry::Occupied(mut o) = self.globals.entry(s.clone()) {
-                            *o.get_mut() = derefed;
+                            *o.get_mut() = value;
                         } else {
                             return Err(self.error_runtime(format!("Undefined variable '{}'", s)));
                         }
@@ -226,7 +225,7 @@ impl VM {
                 }
                 Opcode::JumpIfFalse => {
                     let offset = self.read_short();
-                    if self.peek(0)?.is_falsey() {
+                    if self.peek(0)?.borrow().is_falsey() {
                         self.current_frame().inc(offset);
                     }
                 }
@@ -263,10 +262,10 @@ impl VM {
     }
 
     fn push(&mut self, value: Value) {
-        self.stack.push(Rc::new(value))
+        self.stack.push(Rc::new(RefCell::new(value)))
     }
 
-    fn pop(&mut self) -> Result<Rc<Value>, InterpretResult> {
+    fn pop(&mut self) -> Result<Rc<RefCell<Value>>, InterpretResult> {
         match self.stack.pop() {
             Some(value) => Ok(value),
             None => {
@@ -276,7 +275,7 @@ impl VM {
         }
     }
 
-    fn peek(&self, distance: usize) -> Result<&Rc<Value>, InterpretResult> {
+    fn peek(&self, distance: usize) -> Result<&Rc<RefCell<Value>>, InterpretResult> {
         if distance >= self.stack.len() {
             panic!("Stack underflow");
         } else {
@@ -327,7 +326,7 @@ impl VM {
      * which the compiler sets aside for when methods are added later.
      */
     fn call(&mut self, arg_count: usize) -> bool {
-        let closure = self.peek(arg_count).unwrap().deref();
+        let closure = self.peek(arg_count).unwrap().borrow().clone();
 
         let arity = if let Value::Closure(callee) = closure {
             callee.get_arity()
@@ -363,7 +362,7 @@ impl VM {
      * of the stack.
      */
     fn call_value(&mut self, arg_count: usize) -> bool {
-        let callee = self.peek(arg_count).unwrap().deref();
+        let callee = self.peek(arg_count).unwrap().borrow().clone();
         let result = match callee {
             Value::Closure(_c) => {
                 return self.call(arg_count);
@@ -409,24 +408,24 @@ impl VM {
         print!("          ");
         for slot in &self.stack {
             print!("[ ");
-            print!("{}", slot);
+            print!("{}", slot.borrow());
             print!(" ]");
         }
         println!();
     }
 
     fn binary_op(&mut self, op: fn(a: &Value, b: &Value) -> Value) -> Result<(), InterpretResult> {
-        if self.peek(0)?.is_string() && self.peek(1)?.is_string() {
+        if self.peek(0)?.borrow().is_string() && self.peek(1)?.borrow().is_string() {
             // pop b before a
             let b = self.pop()?;
             let a = self.pop()?;
-            self.push(Value::Str(format!("{}{}", a, b)));
+            self.push(Value::Str(format!("{}{}", a.borrow(), b.borrow())));
             Ok(())
-        } else if self.peek(0)?.is_number() && self.peek(1)?.is_number() {
+        } else if self.peek(0)?.borrow().is_number() && self.peek(1)?.borrow().is_number() {
             // pop b before a
             let b = self.pop()?;
             let a = self.pop()?;
-            self.push(op(a.deref(), b.deref()));
+            self.push(op(&a.borrow(), &b.borrow()));
             Ok(())
         } else {
             Err(self.error_runtime("Operands must be two numbers or two strings."))
@@ -441,7 +440,7 @@ impl VM {
     fn error_runtime<T: Into<String>>(&mut self, err_str: T) -> InterpretResult {
         eprintln!("{}", err_str.into());
         for frame in self.frames.iter().rev() {
-            if let Value::Closure(closure) = &self.stack[frame.closure].deref() {
+            if let Value::Closure(closure) = self.stack[frame.closure].borrow().deref() {
                 let instruction = *frame.ip.borrow() - 1;
                 let line = closure.as_ref().get_chunk().get_line(instruction);
                 eprintln!("[line {}] in {}", line, closure.stack_name());

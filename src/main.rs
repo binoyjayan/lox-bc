@@ -123,8 +123,18 @@ mod tests {
     }
 
     #[test]
+    fn closure_assigned() {
+        run_test("./examples/closure-assigned.lox", true);
+    }
+
+    #[test]
     fn closure_inner_outer() {
         run_test("./examples/closure-inner-outer.lox", true);
+    }
+
+    #[test]
+    fn closure_close_over_variable() {
+        run_test("./examples/closure-close-over-variable.lox", true);
     }
 
     #[test]

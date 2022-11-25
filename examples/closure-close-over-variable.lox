@@ -1,0 +1,20 @@
+// This example should print 'updated' because closures
+// capture 'variables' instead of capturing 'values'.
+// It can be thought of as capturing the place where the value lives.
+
+var globalSet;
+var globalGet;
+
+fun main() {
+  var a = "initial";
+
+  fun set() { a = "updated"; }
+  fun get() { print a; }
+
+  globalSet = set;
+  globalGet = get;
+}
+
+main();
+globalSet();
+globalGet();
