@@ -27,6 +27,7 @@ pub enum Opcode {
     Closure,
     GetUpvalue,
     SetUpvalue,
+    CloseUpvalue,
 }
 
 impl From<u8> for Opcode {
@@ -60,6 +61,7 @@ impl From<u8> for Opcode {
             25 => Opcode::Closure,
             26 => Opcode::GetUpvalue,
             27 => Opcode::SetUpvalue,
+            28 => Opcode::CloseUpvalue,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

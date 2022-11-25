@@ -51,6 +51,7 @@ impl CompileResult {
         locals.borrow_mut().push(Local {
             name: Token::default(),
             depth: Some(0),
+            is_captured: false,
         });
 
         Self {
@@ -100,6 +101,12 @@ impl CompileResult {
         }
     }
 
+    fn capture(&self, index: usize) {
+        let mut new_local = self.locals.borrow()[index].clone();
+        new_local.is_captured = true;
+        self.locals.borrow_mut()[index] = new_local;
+    }
+
     /*
      * An upvalue refers to a local variable in an enclosing function.
      * Every closure maintains an array of upvalues, one for each surrounding
@@ -136,6 +143,11 @@ impl CompileResult {
             .unwrap()
             .resolve_local(name)?
         {
+            self.enclosing
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .capture(depth as usize);
             return Ok(Some(self.add_upvalue(depth, true)?));
         }
 
@@ -200,6 +212,10 @@ impl CompileResult {
     fn is_scope_poppable(&self) -> bool {
         self.locals.borrow().len() > 0
             && self.locals.borrow().last().unwrap().depth.unwrap() > *self.scope_depth.borrow()
+    }
+
+    fn is_captured(&self) -> bool {
+        self.locals.borrow().last().unwrap().is_captured
     }
 
     fn inc_scope(&self, offset: usize) {
@@ -272,9 +288,11 @@ pub struct ParseRule {
     precedence: Precedence,
 }
 
+#[derive(Clone)]
 pub struct Local {
     name: Token,
     depth: Option<usize>,
+    is_captured: bool,
 }
 
 impl ParseRule {
@@ -388,6 +406,7 @@ impl Compiler {
         self.result.borrow().push(Local {
             name: Token::default(),
             depth: Some(0),
+            is_captured: false,
         });
 
         self.scanner = Scanner::new(source);
@@ -554,7 +573,11 @@ impl Compiler {
     fn end_scope(&mut self) {
         self.result.borrow().dec_scope(1);
         while self.result.borrow().is_scope_poppable() {
-            self.emit_byte(Opcode::Pop);
+            if self.result.borrow().is_captured() {
+                self.emit_byte(Opcode::CloseUpvalue);
+            } else {
+                self.emit_byte(Opcode::Pop);
+            }
             self.result.borrow().pop();
         }
     }
@@ -840,6 +863,7 @@ impl Compiler {
             name: name.clone(),
             // variable is not defined fully (yet to compile initializer)
             depth: None,
+            is_captured: false,
         };
         self.result.borrow().push(local);
     }

@@ -257,6 +257,9 @@ impl VM {
                     let value = self.peek(0)?;
                     self.set_upvalue(slot, value);
                 }
+                Opcode::CloseUpvalue => {
+                    let _ = self.pop();
+                }
             }
         }
     }
