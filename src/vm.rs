@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::chunk::*;
+use crate::class::*;
 use crate::closure::*;
 use crate::compiler::*;
 use crate::error::*;
@@ -259,6 +260,15 @@ impl VM {
                 }
                 Opcode::CloseUpvalue => {
                     let _ = self.pop();
+                }
+                Opcode::Class => {
+                    let constant = self.read_constant().clone();
+                    let class_string = if let Value::Str(s) = constant {
+                        s
+                    } else {
+                        panic!("Unable to read constant from table.");
+                    };
+                    self.push(Value::Class(Rc::new(Class::new(class_string))));
                 }
             }
         }

@@ -129,6 +129,7 @@ impl Chunk {
             Opcode::GetUpvalue => self.byte_instruction("OP_GET_UPVALUE", offset),
             Opcode::SetUpvalue => self.byte_instruction("OP_SET_UPVALUE", offset),
             Opcode::CloseUpvalue => self.simple_instruction("OP_CLOSE_UPVALUE", offset),
+            Opcode::Class => self.constant_instruction("OP_CLASS", offset),
         }
     }
 

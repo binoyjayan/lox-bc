@@ -1079,6 +1079,29 @@ impl Compiler {
     }
 
     /*
+     * Printing a class shows it's name, so the compiler stores it on the
+     * constants table. The class's name is also used to bind the class
+     * object to a variable of the same name. So, declare a variable with that
+     * identifier after consuming its token. Next, emit a new instruction to
+     * create the class object at runtime. That instruction takes the constant
+     * table index of the class's name as an operand. Compile the body of the
+     * class after that.. Declaring the variable adds it to the scope but it
+     * cannot be used until it is 'defined'. For classes, the body is defined
+     * before the variable. That way, the user can refer to the containing
+     * class inside the bodies of its own methods.
+     */
+    fn class_declaration(&mut self) {
+        self.consume(TokenType::Identifier, "Expect class name.");
+        let constant = self.parser.previous.clone();
+        let name_constant = self.identifier_constant(&constant);
+        self.declare_variable();
+        self.emit_bytes(Opcode::Class, name_constant);
+        self.define_variable(name_constant);
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        self.consume(TokenType::RightBrace, "Expect '}' aftre class body.");
+    }
+
+    /*
      * Functions are first-class values and are parsed like any other variable
      * declaration. A function declaration creates and stores one in a newly
      * declared variable. A function declaration at the top level will bind
@@ -1382,7 +1405,9 @@ impl Compiler {
     }
 
     fn declaration(&mut self) {
-        if self.matches(TokenType::Fun) {
+        if self.matches(TokenType::Class) {
+            self.class_declaration();
+        } else if self.matches(TokenType::Fun) {
             self.fun_declaration();
         } else if self.matches(TokenType::Var) {
             self.var_declaration();

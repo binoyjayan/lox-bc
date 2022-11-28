@@ -2,6 +2,7 @@
  * A constant pool is an array of values. A LOAD instruction to load
  * a constant looks up the value by index in that array.
  */
+use crate::class::*;
 use crate::closure::*;
 use crate::function::*;
 use std::any::Any;
@@ -24,6 +25,7 @@ pub enum Value {
     Func(Rc<Function>),
     Native(Rc<dyn NativeFunction>),
     Closure(Rc<Closure>),
+    Class(Rc<Class>),
 }
 
 impl PartialEq for Value {
@@ -80,6 +82,7 @@ impl Clone for Value {
             Value::Func(f) => Value::Func(f.clone()),
             Value::Native(f) => Value::Native(f.clone()),
             Value::Closure(c) => Value::Closure(c.clone()),
+            Value::Class(c) => Value::Class(c.clone()),
         }
     }
 }
@@ -104,8 +107,9 @@ impl fmt::Display for Value {
             Self::Str(s) => write!(f, "{}", s),
             Self::Nil => write!(f, "nil"),
             Self::Func(func) => write!(f, "{func}"),
-            Value::Native(_f) => write!(f, "<native fn>"),
-            Value::Closure(c) => write!(f, "{}", c),
+            Self::Native(_f) => write!(f, "<native fn>"),
+            Self::Closure(c) => write!(f, "{}", c),
+            Self::Class(c) => write!(f, "{}", c),
         }
     }
 }
