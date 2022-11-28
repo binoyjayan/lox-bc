@@ -328,7 +328,8 @@ impl Compiler {
         rules[TokenType::LeftBrace as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::RightBrace as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Comma as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Dot as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Dot as usize] =
+            ParseRule::new(None, Some(Compiler::dot), Precedence::Call);
         rules[TokenType::Minus as usize] = ParseRule::new(
             Some(Compiler::unary),
             Some(Compiler::binary),
@@ -625,6 +626,32 @@ impl Compiler {
     fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(Opcode::Call, arg_count);
+    }
+
+    /*
+     * The period works sort of like an infix operator. There is an expression
+     * to the left that is evaluated first and produces an instance. After that
+     * is the '.' followed by a field name. Since there is a preceding operand,
+     * it is hooked into the parse table as an infix expression. It is 'sort-of'
+     * infix because the right-hand side after the '.' is not an expression,
+     * but a single identifier whose semantics are handled by the get/set
+     * expression itself. It is actually closer to a postfix expression.
+     * As in other languages, the . operator binds tightly, with precedence as
+     * high as the parentheses in a function call. After the parser consumes
+     * the dot token, it dispatches to a new parse function.
+     */
+    fn dot(&mut self, can_assign: bool) {
+        self.consume(TokenType::Identifier, "Expect property name after '.'.");
+        let constant = self.parser.previous.clone();
+        let name = self.identifier_constant(&constant);
+
+        // Check 'can_assign' to cases such as "a + b.c = 3"
+        if can_assign && self.matches(TokenType::Equal) {
+            self.expression();
+            self.emit_bytes(Opcode::SetProperty, name);
+        } else {
+            self.emit_bytes(Opcode::GetProperty, name);
+        }
     }
 
     fn literal(&mut self, _can_assign: bool) {

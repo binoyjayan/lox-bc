@@ -6,6 +6,7 @@ mod closure;
 mod compiler;
 mod error;
 mod function;
+mod instance;
 mod native;
 mod opcode;
 mod precedence;

@@ -7,6 +7,7 @@ use crate::class::*;
 use crate::closure::*;
 use crate::compiler::*;
 use crate::error::*;
+use crate::instance::*;
 use crate::native::*;
 use crate::opcode::*;
 use crate::value::*;
@@ -270,6 +271,12 @@ impl VM {
                     };
                     self.push(Value::Class(Rc::new(Class::new(class_string))));
                 }
+                Opcode::GetProperty => {
+                    self.get_property_op()?;
+                }
+                Opcode::SetProperty => {
+                    self.set_property_op()?;
+                }
             }
         }
     }
@@ -294,6 +301,57 @@ impl VM {
         } else {
             Ok(&self.stack[self.stack.len() - distance - 1])
         }
+    }
+
+    fn get_property_op(&mut self) -> Result<(), InterpretResult> {
+        let instance = if let Value::Instance(inst) = self.peek(0)?.borrow().clone() {
+            Some(inst)
+        } else {
+            None
+        };
+        if instance.is_none() {
+            return Err(self.error_runtime("Only instances have properties."));
+        }
+        let instance = instance.unwrap();
+        let constant = self.read_constant();
+        let field_name = if let Value::Str(s) = constant {
+            s
+        } else {
+            panic!("Failed to get class name from table");
+        };
+        if let Some(value) = instance.get_field(&field_name) {
+            let _ = self.pop();
+            self.push(value);
+        } else {
+            return Err(self.error_runtime(format!("Undefined property '{}'", field_name)));
+        }
+        Ok(())
+    }
+
+    fn set_property_op(&mut self) -> Result<(), InterpretResult> {
+        let instance = if let Value::Instance(inst) = self.peek(1)?.borrow().clone() {
+            Some(inst)
+        } else {
+            None
+        };
+        if instance.is_none() {
+            return Err(self.error_runtime("Only instances have fields."));
+        }
+        let instance = instance.unwrap();
+        let constant = self.read_constant();
+        let field_name = if let Value::Str(s) = constant {
+            s
+        } else {
+            panic!("Failed to get class name from table");
+        };
+
+        let value = self.pop()?;
+        instance.set_field(field_name, value.borrow().clone());
+        // discard instance
+        let _ = self.pop();
+        self.stack.push(value);
+
+        Ok(())
     }
 
     /*
@@ -377,6 +435,12 @@ impl VM {
     fn call_value(&mut self, arg_count: usize) -> bool {
         let callee = self.peek(arg_count).unwrap().borrow().clone();
         let result = match callee {
+            Value::Class(c) => {
+                let stack_top = self.stack.len();
+                let klass = Rc::new(RefCell::new(Value::Instance(Rc::new(Instance::new(c)))));
+                self.stack[stack_top - arg_count - 1] = klass;
+                true
+            }
             Value::Closure(_c) => {
                 return self.call(arg_count);
             }

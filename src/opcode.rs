@@ -29,6 +29,8 @@ pub enum Opcode {
     SetUpvalue,
     CloseUpvalue,
     Class,
+    GetProperty,
+    SetProperty,
 }
 
 impl From<u8> for Opcode {
@@ -64,6 +66,8 @@ impl From<u8> for Opcode {
             27 => Opcode::SetUpvalue,
             28 => Opcode::CloseUpvalue,
             29 => Opcode::Class,
+            30 => Opcode::GetProperty,
+            31 => Opcode::SetProperty,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

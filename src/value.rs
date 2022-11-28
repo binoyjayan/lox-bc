@@ -5,6 +5,8 @@
 use crate::class::*;
 use crate::closure::*;
 use crate::function::*;
+use crate::instance::*;
+
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -26,6 +28,7 @@ pub enum Value {
     Native(Rc<dyn NativeFunction>),
     Closure(Rc<Closure>),
     Class(Rc<Class>),
+    Instance(Rc<Instance>),
 }
 
 impl PartialEq for Value {
@@ -36,6 +39,8 @@ impl PartialEq for Value {
             (Value::Nil, Value::Nil) => true,
             (Value::Str(a), Value::Str(b)) => a.eq(b),
             (Value::Func(a), Value::Func(b)) => Rc::ptr_eq(a, b),
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
+            (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Native(a), Value::Native(b)) => a.type_id() == b.type_id(),
             _ => false,
         }
@@ -83,6 +88,7 @@ impl Clone for Value {
             Value::Native(f) => Value::Native(f.clone()),
             Value::Closure(c) => Value::Closure(c.clone()),
             Value::Class(c) => Value::Class(c.clone()),
+            Value::Instance(c) => Value::Instance(c.clone()),
         }
     }
 }
@@ -110,6 +116,7 @@ impl fmt::Display for Value {
             Self::Native(_f) => write!(f, "<native fn>"),
             Self::Closure(c) => write!(f, "{}", c),
             Self::Class(c) => write!(f, "{}", c),
+            Self::Instance(i) => write!(f, "{}", i),
         }
     }
 }
