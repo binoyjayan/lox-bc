@@ -15,6 +15,7 @@ pub enum ChunkType {
     Script,
     Function,
     Method,
+    Initializer,
 }
 
 impl Default for ChunkType {

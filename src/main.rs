@@ -158,4 +158,9 @@ mod tests {
     fn class_this_misused() {
         run_test("./examples/class-this-misused.lox", false);
     }
+
+    #[test]
+    fn class_initializer() {
+        run_test("./examples/class-initializer.lox", true);
+    }
 }

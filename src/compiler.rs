@@ -529,8 +529,22 @@ impl Compiler {
         self.result.borrow().count() - 2
     }
 
+    /*
+     * Emit a return instruction from methods and functions. In an initializer,
+     * instead of pushing nil onto the stack before returning, load slot zero,
+     * which contains the instance. This emit_return() function is also called
+     * when compiling a return statement without a value, so this also
+     * correctly handles cases where the user does an early return inside
+     * the initializer.
+     */
     fn emit_return(&mut self) {
-        self.emit_byte(Opcode::Nil); // Implicit return
+        if self.result.borrow().chunk_type == ChunkType::Initializer {
+            // initializer specific behavior
+            self.emit_bytes(Opcode::GetLocal, 0);
+        } else {
+            // Implicit return for functions and methods
+            self.emit_byte(Opcode::Nil);
+        }
         self.emit_byte(Opcode::Return)
     }
 
@@ -1168,7 +1182,12 @@ impl Compiler {
         self.consume(TokenType::Identifier, "Expect method name.");
         let method_token = self.parser.previous.clone();
         let constant = self.identifier_constant(&method_token);
-        self.function(ChunkType::Method);
+        let chunk_type = if method_token.lexeme == "init" {
+            ChunkType::Initializer
+        } else {
+            ChunkType::Method
+        };
+        self.function(chunk_type);
         self.emit_bytes(Opcode::Method, constant);
     }
 
@@ -1474,7 +1493,8 @@ impl Compiler {
     /*
      * Return value is optional, so the parser looks for a semicolon token
      * to know if one was provided. If there is no return value, the statement
-     * implicitly returns nil.
+     * implicitly returns nil. Also, report an error if an initializer tries
+     * to return a value.
      */
     fn return_statement(&mut self) {
         if self.result.borrow().chunk_type == ChunkType::Script {
@@ -1483,6 +1503,9 @@ impl Compiler {
         if self.matches(TokenType::Semicolon) {
             self.emit_return();
         } else {
+            if self.result.borrow().chunk_type == ChunkType::Initializer {
+                self.error("Can't return a value from an initializer.");
+            }
             self.expression();
             self.consume(TokenType::Semicolon, "Expect ';' after return value.");
             self.emit_byte(Opcode::Return);

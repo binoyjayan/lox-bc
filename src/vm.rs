@@ -485,11 +485,21 @@ impl VM {
                     Rc::new(RefCell::new(method.get_receiver()));
                 return self.call(method.get_closure(), arg_count);
             }
-            Value::Class(c) => {
+            Value::Class(klass) => {
                 let stack_top = self.stack.len();
-                let klass = Rc::new(RefCell::new(Value::Instance(Rc::new(Instance::new(c)))));
+                // let init = klass.get_init_method();
+                let init = klass.get_method("init");
+                let klass = Rc::new(RefCell::new(Value::Instance(Rc::new(Instance::new(klass)))));
                 self.stack[stack_top - arg_count - 1] = klass;
-                true
+                if let Some(initializer) = init {
+                    self.call(initializer, arg_count)
+                } else if arg_count != 0 {
+                    let _ =
+                        self.error_runtime(format!("Expected 0 arguments but got {}.", arg_count));
+                    false
+                } else {
+                    true
+                }
             }
             Value::Closure(c) => {
                 return self.call(c, arg_count);
