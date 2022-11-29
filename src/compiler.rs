@@ -16,6 +16,7 @@ pub struct Compiler {
     parser: Parser,
     scanner: Scanner,
     result: RefCell<Rc<CompileResult>>,
+    current_class: RefCell<Option<Rc<ClassCompiler>>>,
 }
 
 #[derive(Default)]
@@ -36,6 +37,19 @@ struct UpvalueData {
     index: u8,
 }
 
+#[derive(Debug, Default)]
+struct ClassCompiler {
+    enclosing: RefCell<Option<Rc<ClassCompiler>>>,
+}
+
+impl ClassCompiler {
+    pub fn new() -> Self {
+        Self {
+            enclosing: RefCell::new(None),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum FindResult {
     Uninitialized,
@@ -48,11 +62,21 @@ impl CompileResult {
     fn new<T: Into<String>>(name: T, chunk_type: ChunkType) -> Self {
         let locals = RefCell::new(Vec::new());
 
-        locals.borrow_mut().push(Local {
-            name: Token::default(),
-            depth: Some(0),
-            is_captured: false,
-        });
+        let local = if chunk_type != ChunkType::Function {
+            // Only methods have 'this'
+            Local {
+                name: Token::new(TokenType::This, "this", 0),
+                depth: Some(0),
+                is_captured: false,
+            }
+        } else {
+            Local {
+                name: Token::default(),
+                depth: Some(0),
+                is_captured: false,
+            }
+        };
+        locals.borrow_mut().push(local);
 
         Self {
             locals,
@@ -383,7 +407,8 @@ impl Compiler {
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::This as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::This as usize] =
+            ParseRule::new(Some(Compiler::this), None, Precedence::None);
         rules[TokenType::True as usize] =
             ParseRule::new(Some(Compiler::literal), None, Precedence::None);
         rules[TokenType::Var as usize] = ParseRule::new(None, None, Precedence::None);
@@ -400,6 +425,7 @@ impl Compiler {
             parser: Parser::default(),
             scanner: Scanner::new(""),
             result: RefCell::new(Rc::new(CompileResult::default())),
+            current_class: RefCell::new(None),
         }
     }
 
@@ -778,6 +804,40 @@ impl Compiler {
         self.named_variable(&self.parser.previous.clone(), can_assign)
     }
 
+    /*
+     * Treat 'this' as a lexically scoped local variable whose value gets
+     * initialized magically. Compiling it like a local variable means helps
+     * get a lot of behavior for free. In particular, closures inside a method
+     * that reference 'this' will do the right thing and capture the receiver
+     * in an upvalue. When the parser function is called, the 'this' token has
+     * just been consumed and is stored as the previous token. Call the
+     * existing variable() function which compiles identifier expressions as
+     * variable accesses. The variable() function doesn’t care that this has
+     * its own token type and isn’t an identifier. It is happy to treat the
+     * lexeme "this" as if it were a variable name and then look it up using
+     * the existing scope resolution machinery. Right now, that lookup will
+     * fail because a variable whose name is "this" is not declared.
+     * At least until they get captured by closures, clox stores every local
+     * variable on the VM’s stack. The compiler keeps track of which slots in
+     * the function’s stack window are owned by which local variables.
+     *
+     * The compiler sets aside stack slot zero by declaring a local variable
+     * whose name is an empty string. For function calls, that slot ends up
+     * holding the function being called. Since the slot has no name, the
+     * function body never accesses it. For method calls, that slot can be
+     * repurposed to store the receiver. Slot zero will store the instance
+     * that 'this' is bound to. In order to compile 'this' expressions, the
+     * compiler needs to give the correct name to that local variable.
+     * Do this only for methods. Function declarations don’t have a 'this'.
+     */
+    fn this(&mut self, _can_assign: bool) {
+        if self.current_class.borrow().is_none() {
+            self.error("Can't use 'this' outside of a class.");
+            return;
+        }
+        self.variable(false)
+    }
+
     fn unary(&mut self, _can_assign: bool) {
         let operator_type = self.parser.previous.ttype;
         // compile the operand
@@ -1108,7 +1168,7 @@ impl Compiler {
         self.consume(TokenType::Identifier, "Expect method name.");
         let method_token = self.parser.previous.clone();
         let constant = self.identifier_constant(&method_token);
-        self.function(ChunkType::Function);
+        self.function(ChunkType::Method);
         self.emit_bytes(Opcode::Method, constant);
     }
 
@@ -1145,6 +1205,17 @@ impl Compiler {
         self.emit_bytes(Opcode::Class, name_constant);
         self.define_variable(name_constant);
 
+        // When the compiler begins compiling a class it pushes a new
+        // class compiler onto the implicit "stack"
+        let prev_class = self
+            .current_class
+            .replace(Some(Rc::new(ClassCompiler::new())));
+        self.current_class
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .enclosing
+            .replace(prev_class);
         /* Generate code to load a variable with given name onto stack
          * so the method declarations can bind to the class name
          */
@@ -1156,6 +1227,22 @@ impl Compiler {
         self.consume(TokenType::RightBrace, "Expect '}' aftre class body.");
         // pop class variable as it is no longer needed by the method declarations
         self.emit_byte(Opcode::Pop);
+
+        // Pop the class compiler off the stack and restore the enclosing one
+        let prev_class = self
+            .current_class
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .enclosing
+            .replace(None);
+
+        self.current_class
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .enclosing
+            .replace(prev_class);
     }
 
     /*

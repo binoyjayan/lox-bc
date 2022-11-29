@@ -140,12 +140,22 @@ mod tests {
     }
 
     #[test]
-    fn closure_deviousr() {
+    fn closure_devious() {
         run_test("./examples/closure-devious.lox", true);
     }
 
     #[test]
     fn class_simple() {
-        run_test("./examples/class_simple.lox", true);
+        run_test("./examples/class-simple.lox", true);
+    }
+
+    #[test]
+    fn class_this() {
+        run_test("./examples/class-this.lox", true);
+    }
+
+    #[test]
+    fn class_this_misused() {
+        run_test("./examples/class-this-misused.lox", false);
     }
 }

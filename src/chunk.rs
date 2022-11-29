@@ -14,6 +14,7 @@ pub struct Chunk {
 pub enum ChunkType {
     Script,
     Function,
+    Method,
 }
 
 impl Default for ChunkType {

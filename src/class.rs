@@ -21,9 +21,7 @@ impl Class {
     }
     pub fn add_method(&self, name: &str, method: Value) {
         if let Value::Closure(closure) = method {
-            self.methods
-                .borrow_mut()
-                .insert(name.to_string(), closure);
+            self.methods.borrow_mut().insert(name.to_string(), closure);
         }
     }
 
