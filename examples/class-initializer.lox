@@ -2,7 +2,6 @@ class CoffeeMaker {
   init(coffee) {
     this.coffee = coffee;
 
-    return 1;
   }
 
   brew() {

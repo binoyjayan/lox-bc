@@ -105,6 +105,11 @@ mod tests {
     }
 
     #[test]
+    fn function_native() {
+        run_test("./examples/function-native.lox", true);
+    }
+
+    #[test]
     fn closure_simple() {
         run_test("./examples/closure-simple.lox", true);
     }
