@@ -13,7 +13,7 @@ impl Scanner {
             source: source.chars().collect::<Vec<char>>(),
             start: 0,
             current: 0,
-            line: 0,
+            line: 1,
         }
     }
 
