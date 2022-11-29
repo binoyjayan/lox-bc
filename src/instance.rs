@@ -33,6 +33,9 @@ impl Instance {
     pub fn set_field(&self, name: String, value: Value) {
         self.fields.borrow_mut().insert(name, value);
     }
+    pub fn get_class(&self) -> Rc<Class> {
+        Rc::clone(&self.klass)
+    }
 }
 
 impl fmt::Display for Instance {

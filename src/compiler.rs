@@ -1040,12 +1040,11 @@ impl Compiler {
     /*
      * Parse a function or a method
      */
-    fn function(&mut self, _chunk_type: ChunkType) {
+    fn function(&mut self, chunk_type: ChunkType) {
         let function_name = self.parser.previous.lexeme.clone();
-        let prev_compile_result = self.result.replace(Rc::new(CompileResult::new(
-            function_name,
-            ChunkType::Function,
-        )));
+        let prev_compile_result = self
+            .result
+            .replace(Rc::new(CompileResult::new(function_name, chunk_type)));
 
         self.result
             .borrow()
@@ -1105,6 +1104,14 @@ impl Compiler {
         }
     }
 
+    fn method(&mut self) {
+        self.consume(TokenType::Identifier, "Expect method name.");
+        let method_token = self.parser.previous.clone();
+        let constant = self.identifier_constant(&method_token);
+        self.function(ChunkType::Function);
+        self.emit_bytes(Opcode::Method, constant);
+    }
+
     /*
      * Printing a class shows it's name, so the compiler stores it on the
      * constants table. The class's name is also used to bind the class
@@ -1116,16 +1123,39 @@ impl Compiler {
      * cannot be used until it is 'defined'. For classes, the body is defined
      * before the variable. That way, the user can refer to the containing
      * class inside the bodies of its own methods.
+     *
+     * The tricky part with compiling a class declaration is that a class may
+     * declare any number of methods. Somehow the runtime needs to look up and
+     * bind all of them. That would be a lot to pack into a single OP_CLASS
+     * instruction. Instead, the bytecode we generate for a class declaration
+     * will split the process into a series of instructions. The compiler
+     * already emits an OP_CLASS instruction that creates a new empty Class
+     * object. Then it emits instructions to store the class in a variable
+     * with its name. For each method declaration, we a new OP_METHOD
+     * instruction is emited that adds a single method to that class. When
+     * all of the OP_METHOD instructions have executed, the class is fully
+     * formed. While the user sees a class declaration as a single atomic
+     * operation, the VM implements it as a series of mutations.
      */
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
-        let constant = self.parser.previous.clone();
-        let name_constant = self.identifier_constant(&constant);
+        let class_token = self.parser.previous.clone();
+        let name_constant = self.identifier_constant(&class_token);
         self.declare_variable();
         self.emit_bytes(Opcode::Class, name_constant);
         self.define_variable(name_constant);
+
+        /* Generate code to load a variable with given name onto stack
+         * so the method declarations can bind to the class name
+         */
+        self.named_variable(&class_token, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.method();
+        }
         self.consume(TokenType::RightBrace, "Expect '}' aftre class body.");
+        // pop class variable as it is no longer needed by the method declarations
+        self.emit_byte(Opcode::Pop);
     }
 
     /*

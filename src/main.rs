@@ -143,4 +143,9 @@ mod tests {
     fn closure_deviousr() {
         run_test("./examples/closure-devious.lox", true);
     }
+
+    #[test]
+    fn class_simple() {
+        run_test("./examples/class_simple.lox", true);
+    }
 }

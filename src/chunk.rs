@@ -132,6 +132,7 @@ impl Chunk {
             Opcode::Class => self.constant_instruction("OP_CLASS", offset),
             Opcode::GetProperty => self.constant_instruction("OP_GET_PROPERTY", offset),
             Opcode::SetProperty => self.constant_instruction("OP_SET_PROPERTY", offset),
+            Opcode::Method => self.constant_instruction("OP_METHOD", offset),
         }
     }
 

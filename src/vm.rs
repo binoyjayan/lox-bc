@@ -7,6 +7,7 @@ use crate::class::*;
 use crate::closure::*;
 use crate::compiler::*;
 use crate::error::*;
+use crate::function::*;
 use crate::instance::*;
 use crate::native::*;
 use crate::opcode::*;
@@ -60,9 +61,9 @@ impl VM {
         let mut compiler = Compiler::new();
         let function = compiler.compile(source)?;
 
-        let closure = Value::Closure(Rc::new(Closure::new(Rc::new(function))));
-        self.push(closure);
-        self.call(0);
+        let closure = Rc::new(Closure::new(Rc::new(function)));
+        self.push(Value::Closure(Rc::clone(&closure)));
+        self.call(closure, 0);
 
         // TODO: Is this required?
         // self.run(); let _ = self.pop();
@@ -105,10 +106,12 @@ impl VM {
 
     fn chunk(&self) -> Rc<Chunk> {
         let position = self.current_frame().closure;
-        if let Value::Closure(closure) = &self.stack[position].borrow().deref() {
-            closure.get_chunk()
-        } else {
-            panic!("No chunk in function")
+        match &self.stack[position].borrow().deref() {
+            Value::Closure(closure) => closure.get_chunk(),
+            Value::BoundMethod(bound) => bound.get_closure().get_chunk(),
+            _ => {
+                panic!("No chunk in function")
+            }
         }
     }
 
@@ -277,6 +280,15 @@ impl VM {
                 Opcode::SetProperty => {
                     self.set_property_op()?;
                 }
+                Opcode::Method => {
+                    let constant = self.read_constant();
+                    let method_name = if let Value::Str(s) = constant {
+                        s
+                    } else {
+                        panic!("Failed to get method name from table");
+                    };
+                    self.define_method(&method_name)?;
+                }
             }
         }
     }
@@ -303,6 +315,22 @@ impl VM {
         }
     }
 
+    /*
+     * Function to get fields or methods. Fields and methods are accessed using
+     * the same "dot property syntax. The compiler parses the right expressions
+     * and emits OP_GET_PROPERTY instructions for them. When a property access
+     * instruction executes, the instance is on top of the stack. The
+     * instruction’s job is to find a field or method with the given name and
+     * replace the top of the stack with the accessed property. Insert the code
+     * to look up a field on the receiver instance. Fields take priority over
+     * and shadow methods, so look for a field first. If the instance does not
+     * have a field with the given property name, then the name may refer to a
+     * method. Use the instance’s class and pass it to a new bind_method()
+     * helper. If that function finds a method, it places the method on the
+     * stack and returns true. Otherwise, it returns false to indicate a method
+     * with that name couldn’t be found. Since the name also wasn’t a field,
+     * that means there is a runtime error, which aborts the interpreter.
+     */
     fn get_property_op(&mut self) -> Result<(), InterpretResult> {
         let instance = if let Value::Instance(inst) = self.peek(0)?.borrow().clone() {
             Some(inst)
@@ -322,8 +350,8 @@ impl VM {
         if let Some(value) = instance.get_field(&field_name) {
             let _ = self.pop();
             self.push(value);
-        } else {
-            return Err(self.error_runtime(format!("Undefined property '{}'", field_name)));
+        } else if !self.bind_method(instance.get_class(), &field_name)? {
+            return Err(InterpretResult::RuntimeError);
         }
         Ok(())
     }
@@ -352,6 +380,42 @@ impl VM {
         self.stack.push(value);
 
         Ok(())
+    }
+
+    /*
+     * The method closure is on top of the stack, above the class it will be
+     * bound to. Read those two stack slots and store the closure in the
+     * class’s method table. Then pop the closure since it is done with.
+     */
+    fn define_method(&mut self, name: &str) -> Result<(), InterpretResult> {
+        let method = self.peek(0)?.borrow().clone();
+        let klass = if let Value::Class(c) = self.peek(1)?.borrow().clone() {
+            c
+        } else {
+            panic!("Failed to get class name from stack");
+        };
+        klass.add_method(name, method);
+        let _ = self.pop();
+        Ok(())
+    }
+
+    /*
+     * First we look for a method with the given name in the class’s method
+     * table. If it is not found, report a runtime error and bail out.
+     * Otherwise, take the method and wrap it in a new BoundMethod object.
+     * Grab the receiver from its home on top of the stack. Finally, pop
+     * the instance and replace the top of the stack with the bound method.
+     */
+    fn bind_method(&mut self, klass: Rc<Class>, name: &str) -> Result<bool, InterpretResult> {
+        if let Some(method) = klass.get_method(name) {
+            let value = self.peek(0)?.borrow().clone();
+            let bound = Rc::new(BoundMethod::new(&value, &method));
+            let _ = self.pop();
+            self.push(Value::BoundMethod(bound));
+            Ok(true)
+        } else {
+            Err(self.error_runtime(format!("Undefined property '{}'.", name)))
+        }
     }
 
     /*
@@ -396,15 +460,17 @@ impl VM {
      * frame its window into the stack. The '-1' is for the stack 'slot 0'
      * which the compiler sets aside for when methods are added later.
      */
-    fn call(&mut self, arg_count: usize) -> bool {
+    fn call(&mut self, closure: Rc<Closure>, arg_count: usize) -> bool {
+        let arity = closure.get_arity();
+        /*
         let closure = self.peek(arg_count).unwrap().borrow().clone();
-
         let arity = if let Value::Closure(callee) = closure {
             callee.get_arity()
         } else {
             // shouldn't happen
             panic!("Can only call functions and classes. {:?}", closure);
         };
+        */
 
         if arity != arg_count {
             let _ = self.error_runtime(format!(
@@ -429,20 +495,29 @@ impl VM {
     }
 
     /*
+     * Users can call methods, classes and closures.
+     * When methods are declared on classes and accessed on instances, they get
+     * bound to methods on stack. Pull the raw closure back out of the BoundMethod
+     * object and use the existing call() helper to begin an invocation of that
+     * closure by pushing a CallFrame for it onto the call stack.
+     *
      * The callee can be found at the offset 'arg_count' from the top
      * of the stack.
      */
     fn call_value(&mut self, arg_count: usize) -> bool {
         let callee = self.peek(arg_count).unwrap().borrow().clone();
         let result = match callee {
+            Value::BoundMethod(method) => {
+                return self.call(method.get_closure(), arg_count);
+            }
             Value::Class(c) => {
                 let stack_top = self.stack.len();
                 let klass = Rc::new(RefCell::new(Value::Instance(Rc::new(Instance::new(c)))));
                 self.stack[stack_top - arg_count - 1] = klass;
                 true
             }
-            Value::Closure(_c) => {
-                return self.call(arg_count);
+            Value::Closure(c) => {
+                return self.call(c, arg_count);
             }
             Value::Native(f) => {
                 let stack_top = self.stack.len();

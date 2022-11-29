@@ -29,6 +29,7 @@ pub enum Value {
     Closure(Rc<Closure>),
     Class(Rc<Class>),
     Instance(Rc<Instance>),
+    BoundMethod(Rc<BoundMethod>),
 }
 
 impl PartialEq for Value {
@@ -89,6 +90,7 @@ impl Clone for Value {
             Value::Closure(c) => Value::Closure(c.clone()),
             Value::Class(c) => Value::Class(c.clone()),
             Value::Instance(c) => Value::Instance(c.clone()),
+            Value::BoundMethod(c) => Value::BoundMethod(c.clone()),
         }
     }
 }
@@ -117,6 +119,7 @@ impl fmt::Display for Value {
             Self::Closure(c) => write!(f, "{}", c),
             Self::Class(c) => write!(f, "{}", c),
             Self::Instance(i) => write!(f, "{}", i),
+            Self::BoundMethod(m) => write!(f, "{}", m),
         }
     }
 }
