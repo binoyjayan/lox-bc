@@ -10,6 +10,7 @@ use crate::value::*;
 pub struct Class {
     name: String,
     methods: RefCell<HashMap<String, Rc<Closure>>>,
+    initializer: RefCell<Option<Rc<Closure>>>,
 }
 
 impl Class {
@@ -17,6 +18,7 @@ impl Class {
         Self {
             name,
             methods: RefCell::new(HashMap::new()),
+            initializer: RefCell::new(None),
         }
     }
     pub fn add_method(&self, name: &str, method: Value) {
@@ -27,6 +29,18 @@ impl Class {
 
     pub fn get_method(&self, name: &str) -> Option<Rc<Closure>> {
         self.methods.borrow().get(name).cloned()
+    }
+
+    // To enable optimized invocation for initialize
+    pub fn get_init_method(&self) -> Option<Rc<Closure>> {
+        if self.initializer.borrow().is_none() {
+            None
+        } else {
+            Some(self.initializer.borrow().as_ref().unwrap().clone())
+        }
+    }
+    pub fn set_init_method(&self, closure: Rc<Closure>) {
+        self.initializer.replace(Some(closure));
     }
 }
 

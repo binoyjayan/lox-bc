@@ -379,7 +379,15 @@ impl VM {
         } else {
             panic!("Failed to get class name from stack");
         };
-        klass.add_method(name, method);
+        if name == "init" {
+            if let Value::Closure(closure) = method {
+                klass.set_init_method(closure);
+            } else {
+                panic!("method should have been a closure.");
+            }
+        } else {
+            klass.add_method(name, method);
+        }
         let _ = self.pop();
         Ok(())
     }
@@ -569,8 +577,7 @@ impl VM {
             }
             Value::Class(klass) => {
                 let stack_top = self.stack.len();
-                // let init = klass.get_init_method();
-                let init = klass.get_method("init");
+                let init = klass.get_init_method();
                 let klass = Rc::new(RefCell::new(Value::Instance(Rc::new(Instance::new(klass)))));
                 self.stack[stack_top - arg_count - 1] = klass;
                 if let Some(initializer) = init {
