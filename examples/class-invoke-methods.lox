@@ -1,0 +1,16 @@
+// Optimized invocations
+
+class Foo {
+  foo() {}
+}
+
+var f = Foo();
+
+var start = clock();
+
+for(var i = 0; i < 5000; i = i + 1) {
+  f.foo();
+}
+
+var end = clock();
+print end - start;

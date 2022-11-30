@@ -168,4 +168,14 @@ mod tests {
     fn class_initializer() {
         run_test("./examples/class-initializer.lox", true);
     }
+
+    #[test]
+    fn class_invoke_methods() {
+        run_test("./examples/class-invoke-methods.lox", true);
+    }
+
+    #[test]
+    fn class_invoke_fields() {
+        run_test("./examples/class-invoke-fields.lox", true);
+    }
 }

@@ -271,6 +271,9 @@ impl VM {
                     };
                     self.define_method(&method_name)?;
                 }
+                Opcode::Invoke => {
+                    self.invoke_instruction()?;
+                }
             }
         }
     }
@@ -397,6 +400,85 @@ impl VM {
             Ok(true)
         } else {
             Err(self.error_runtime(format!("Undefined property '{}'.", name)))
+        }
+    }
+
+    /*
+     * Look up the method name from the first operand and then read the
+     * argument count operand. Then hand off to invoke() to do the heavy
+     * lifting. That function returns true if the invocation succeeds.
+     * As usual, a false return means a runtime error occurred. We check for
+     * that here and abort the interpreter if disaster has struck.
+     */
+    fn invoke_instruction(&mut self) -> Result<(), InterpretResult> {
+        let constant = self.read_constant();
+        let method_name = if let Value::Str(s) = constant {
+            s
+        } else {
+            panic!("Failed to get method name from table");
+        };
+        let arg_count = self.read_byte() as usize;
+        if !self.invoke(&method_name, arg_count)? {
+            return Err(InterpretResult::RuntimeError);
+        }
+        Ok(())
+    }
+
+    /*
+     * First grab the receiver off the stack. The arguments passed to the
+     * method are above it on the stack, so peek that many slots down. Then,
+     * it’s a simple matter to cast the object to an instance and invoke
+     * the method on it. That does assume the object is an instance. As with
+     * OP_GET_PROPERTY instructions, also handle the case where a user
+     * incorrectly tries to call a method on a value of the wrong type.
+     *
+     * Before looking up a method on the instance’s class, look for a field
+     * with the same name. If we find a field, then store it on the stack
+     * in place of the receiver, under the argument list. This is how
+     * OP_GET_PROPERTY behaves since the latter instruction executes before a
+     * subsequent parenthesized list of arguments has been evaluated. Then try
+     * to call that field’s value like the callable that it hopefully is. The
+     * call_value() helper will check the value’s type and call it as
+     * appropriate or report a runtime error if the field’s value isn’t a
+     * callable type like a closure.
+     */
+    fn invoke(&mut self, name: &str, arg_count: usize) -> Result<bool, InterpretResult> {
+        let receiver = self.peek(arg_count)?.borrow().clone();
+        if let Value::Instance(instance) = receiver {
+            if let Some(value) = instance.get_field(name) {
+                let stack_top = self.stack.len();
+                self.stack[stack_top - arg_count - 1] = Rc::new(RefCell::new(value));
+                Ok(self.call_value(arg_count))
+            } else {
+                Ok(self.invoke_from_class(&instance.get_class(), name, arg_count))
+            }
+        } else {
+            let _ = self.error_runtime("Only instances have methods.");
+            Ok(false)
+        }
+    }
+
+    /*
+     * This function combines the logic of how the VM implements OP_GET_PROPERTY
+     * and OP_CALL instructions, in that order. First look up the method by
+     * name in the class’s method table. If we don’t find one, we report that
+     * runtime error and exit. Otherwise, take the method’s closure and push a
+     * call to it onto the CallFrame stack. There is no need to allocate and
+     * initialize an BoundMethod object. In fact, there is not need to juggle
+     * anything on the stack. The receiver and method arguments are already
+     * where they need to be.
+     *
+     * This is a key reason why we use stack slot zero to store the receiver.
+     * It’s how the caller already organizes the stack for a method call. An
+     * efficient calling convention is an important part of a bytecode VM’s
+     * performance story.
+     */
+    fn invoke_from_class(&mut self, klass: &Rc<Class>, name: &str, arg_count: usize) -> bool {
+        if let Some(closure) = klass.get_method(name) {
+            self.call(closure, arg_count)
+        } else {
+            let _ = self.error_runtime(format!("Undefined property '{}'", name));
+            false
         }
     }
 

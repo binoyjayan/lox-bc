@@ -32,6 +32,7 @@ pub enum Opcode {
     GetProperty,
     SetProperty,
     Method,
+    Invoke,
 }
 
 impl From<u8> for Opcode {
@@ -70,6 +71,7 @@ impl From<u8> for Opcode {
             30 => Opcode::GetProperty,
             31 => Opcode::SetProperty,
             32 => Opcode::Method,
+            33 => Opcode::Invoke,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

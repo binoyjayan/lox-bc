@@ -135,6 +135,7 @@ impl Chunk {
             Opcode::GetProperty => self.constant_instruction("OP_GET_PROPERTY", offset),
             Opcode::SetProperty => self.constant_instruction("OP_SET_PROPERTY", offset),
             Opcode::Method => self.constant_instruction("OP_METHOD", offset),
+            Opcode::Invoke => self.invoke_instruction("OP_INVOKE", offset),
         }
     }
 
@@ -148,7 +149,6 @@ impl Chunk {
     #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
     pub fn jump_instruction(&self, name: &str, jump_style: JumpStyle, offset: usize) -> usize {
         let jump = self.get_jump_offset(offset + 1);
-        // let jump = (((self.code[offset + 1] as u16) << 8) | self.code[offset + 2] as u16) as usize;
         let jump_to = if jump_style == JumpStyle::Forwards {
             offset + 3 + jump
         } else {
@@ -167,6 +167,16 @@ impl Chunk {
         self.constants.print(constant);
         println!("'");
         offset + 2
+    }
+
+    #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]
+    fn invoke_instruction(&self, name: &str, offset: usize) -> usize {
+        let constant = self.code[offset + 1];
+        let arg_count = self.code[offset + 2];
+        print!("{:-16} ({} args) {:4} '", name, arg_count, constant);
+        self.constants.print(constant);
+        println!("'");
+        offset + 3
     }
 
     #[cfg(any(feature = "debug_trace_execution", feature = "debug_print_code"))]

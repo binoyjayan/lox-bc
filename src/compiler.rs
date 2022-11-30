@@ -679,6 +679,21 @@ impl Compiler {
      * As in other languages, the . operator binds tightly, with precedence as
      * high as the parentheses in a function call. After the parser consumes
      * the dot token, it dispatches to a new parse function.
+     *
+     * Optimized invocations
+     * After the compiler has parsed the property name, look for a left
+     * parenthesis. If there is a match, switch to a new code path. There,
+     * compile the argument list exactly like we do when compiling a call
+     * expression. Then we emit a single new OP_INVOKE instruction.
+     *
+     * It takes two operands:
+     *  - The index of the property name in the constant table.
+     *  - The number of arguments passed to the method.
+     *
+     * In other words, this single instruction combines the operands of the
+     * OP_GET_PROPERTY and OP_CALL instructions it replaces, in that order.
+     * It really is a fusion of those two instructions.
+     *
      */
     fn dot(&mut self, can_assign: bool) {
         self.consume(TokenType::Identifier, "Expect property name after '.'.");
@@ -689,6 +704,10 @@ impl Compiler {
         if can_assign && self.matches(TokenType::Equal) {
             self.expression();
             self.emit_bytes(Opcode::SetProperty, name);
+        } else if self.matches(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.emit_bytes(Opcode::Invoke, name);
+            self.emit_byte(arg_count);
         } else {
             self.emit_bytes(Opcode::GetProperty, name);
         }
