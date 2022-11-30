@@ -136,6 +136,7 @@ impl Chunk {
             Opcode::SetProperty => self.constant_instruction("OP_SET_PROPERTY", offset),
             Opcode::Method => self.constant_instruction("OP_METHOD", offset),
             Opcode::Invoke => self.invoke_instruction("OP_INVOKE", offset),
+            Opcode::Inherit => self.simple_instruction("OP_INHERIT", offset),
         }
     }
 

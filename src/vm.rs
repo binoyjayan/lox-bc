@@ -274,6 +274,9 @@ impl VM {
                 Opcode::Invoke => {
                     self.invoke_instruction()?;
                 }
+                Opcode::Inherit => {
+                    self.inheritance()?;
+                }
             }
         }
     }
@@ -554,6 +557,25 @@ impl VM {
         });
 
         true
+    }
+
+    fn inheritance(&mut self) -> Result<(), InterpretResult> {
+        let superclass = self.peek(1)?.borrow().clone();
+        let superclass = if let Value::Class(klass) = superclass {
+            klass
+        } else {
+            return Err(self.error_runtime("Superclass must be a class."));
+        };
+        let subclass = if let Value::Class(klass) = self.peek(0)?.borrow().clone() {
+            klass
+        } else {
+            panic!("No subclass found of stack.");
+        };
+
+        subclass.copy_methods(&superclass);
+
+        let _ = self.pop();
+        Ok(())
     }
 
     /*

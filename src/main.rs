@@ -178,4 +178,9 @@ mod tests {
     fn class_invoke_fields() {
         run_test("./examples/class-invoke-fields.lox", true);
     }
+
+    #[test]
+    fn class_superclass_inheritance() {
+        run_test("./examples/inheritance-simple.lox", true);
+    }
 }

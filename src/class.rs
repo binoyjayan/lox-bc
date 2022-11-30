@@ -42,6 +42,14 @@ impl Class {
     pub fn set_init_method(&self, closure: Rc<Closure>) {
         self.initializer.replace(Some(closure));
     }
+
+    // Copy methods from the class passed as argument to self
+    pub fn copy_methods(&self, superclass: &Self) {
+        for (k, v) in superclass.methods.borrow().iter() {
+            self.methods.borrow_mut().insert(k.clone(), Rc::clone(v));
+        }
+        self.initializer.replace(superclass.get_init_method());
+    }
 }
 
 impl fmt::Display for Class {

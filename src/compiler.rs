@@ -1237,8 +1237,8 @@ impl Compiler {
      */
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
-        let class_token = self.parser.previous.clone();
-        let name_constant = self.identifier_constant(&class_token);
+        let class_name = self.parser.previous.clone();
+        let name_constant = self.identifier_constant(&class_name);
         self.declare_variable();
         self.emit_bytes(Opcode::Class, name_constant);
         self.define_variable(name_constant);
@@ -1254,10 +1254,24 @@ impl Compiler {
             .unwrap()
             .enclosing
             .replace(prev_class);
+
+        // Handle inheritance
+        if self.matches(TokenType::Less) {
+            self.consume(TokenType::Identifier, "Expect superclass name.");
+            // Lookup superclass (previous token) by name and pushes it onto stack
+            self.variable(false);
+            let superclass_name = self.parser.previous.clone();
+            if class_name.lexeme == superclass_name.lexeme {
+                self.error("A class can't inherit from itself.");
+            }
+            // Load subclass onto stack followed by an OP_INHERIT
+            self.named_variable(&class_name, false);
+            self.emit_byte(Opcode::Inherit)
+        }
         /* Generate code to load a variable with given name onto stack
          * so the method declarations can bind to the class name
          */
-        self.named_variable(&class_token, false);
+        self.named_variable(&class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
             self.method();
