@@ -181,6 +181,11 @@ mod tests {
 
     #[test]
     fn class_superclass_inheritance() {
-        run_test("./examples/inheritance-simple.lox", true);
+        run_test("./examples/class-inheritance-simple.lox", true);
+    }
+
+    #[test]
+    fn class_superclass_inheritance_super() {
+        run_test("./examples/class-inheritance-super.lox", true);
     }
 }

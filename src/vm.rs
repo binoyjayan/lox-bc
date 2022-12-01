@@ -277,6 +277,9 @@ impl VM {
                 Opcode::Inherit => {
                     self.inheritance()?;
                 }
+                Opcode::GetSuper => {
+                    self.get_super_op()?;
+                }
             }
         }
     }
@@ -579,6 +582,36 @@ impl VM {
     }
 
     /*
+     * As with properties, read the method name from the constant table.
+     * Then pass that to the bind_method() which looks up the method in the
+     * given class’s method table and creates an BoundMethod object to bundle
+     * the resulting closure to the current instance. The key difference is
+     * which class is passed to bind_method(). With a normal property access,
+     * use the Instances’s own class, which provides the dynamic dispatch.
+     * For a super call, use the statically resolved superclass of the
+     * containing class, that the compiler has made available on top of the
+     * stack. Pop that superclass and pass it to the bind_method(), which
+     * skips over any overriding methods in any of the subclasses between that
+     * superclass and the instance’s own class. It also correctly includes any
+     * methods inherited by the superclass from any of its superclasses.
+     * The rest of the behavior is the same. Popping the superclass leaves the
+     * instance at the top of the stack. When bind_method() succeeds, it pops
+     * the instance and pushes the new bound method. Otherwise, it reports a
+     * runtime error and returns false.
+     */
+    fn get_super_op(&mut self) -> Result<(), InterpretResult> {
+        let name = self.read_string();
+        let popped_value = self.pop()?.borrow().clone();
+        let superclass = if let Value::Class(klass) = popped_value {
+            klass
+        } else {
+            panic!("no superclass");
+        };
+        self.bind_method(superclass, &name)?;
+        Ok(())
+    }
+
+    /*
      * Users can call methods, classes and closures.
      * When methods are declared on classes and accessed on instances, they get
      * bound to methods on stack. Pull the raw closure back out of the BoundMethod
@@ -649,6 +682,16 @@ impl VM {
         let index = self.chunk().read_byte(self.ip()) as usize;
         self.current_frame().inc(1);
         self.chunk().get_constant(index)
+    }
+
+    // Helper to read string from constant table
+    fn read_string(&mut self) -> String {
+        let constant = self.read_constant().clone();
+        if let Value::Str(s) = constant {
+            s
+        } else {
+            panic!("Unable to get field name from table");
+        }
     }
 
     #[allow(dead_code)]

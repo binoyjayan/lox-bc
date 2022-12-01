@@ -40,12 +40,14 @@ struct UpvalueData {
 #[derive(Debug, Default)]
 struct ClassCompiler {
     enclosing: RefCell<Option<Rc<ClassCompiler>>>,
+    has_superclass: RefCell<bool>,
 }
 
 impl ClassCompiler {
     pub fn new() -> Self {
         Self {
             enclosing: RefCell::new(None),
+            has_superclass: RefCell::new(false),
         }
     }
 }
@@ -406,7 +408,8 @@ impl Compiler {
             ParseRule::new(Some(Compiler::literal), Some(Compiler::or), Precedence::Or);
         rules[TokenType::Print as usize] = ParseRule::new(None, None, Precedence::None);
         rules[TokenType::Return as usize] = ParseRule::new(None, None, Precedence::None);
-        rules[TokenType::Super as usize] = ParseRule::new(None, None, Precedence::None);
+        rules[TokenType::Super as usize] =
+            ParseRule::new(Some(Compiler::super_), None, Precedence::None);
         rules[TokenType::This as usize] =
             ParseRule::new(Some(Compiler::this), None, Precedence::None);
         rules[TokenType::True as usize] =
@@ -837,6 +840,47 @@ impl Compiler {
         self.named_variable(&self.parser.previous.clone(), can_assign)
     }
 
+    fn synthetic_token(&self, ttype: TokenType, text: &str) -> Token {
+        Token::new(ttype, text, 0)
+    }
+
+    /* Unlike 'this' super token is not a standalone expression. Instead, the
+     * dot and method name following it are inseperable parts of the syntax.
+     * However, the parenthesized argument list is separate. Methods are looked
+     * up dynamically, so use identifier_constant() to take the lexeme of the
+     * method name token and store it in the constant table similar to how it
+     * is done for property access expressions. In order to access a superclass
+     * method on the current instance, the runtime needs both the receiver
+     * and the superclass (referred to as 'super') of the surrounding method’s
+     * class. The first named_variable() call generates code to look up the
+     * current receiver stored in the hidden variable “this” and push it onto
+     * the stack. The second call emits code to look up the superclass from its
+     * "super" variable and push that on top.
+     */
+    fn super_(&mut self, _can_assign: bool) {
+        if self.current_class.borrow().is_none() {
+            self.error("Can't use 'super' outside of a class.");
+        } else if !*self
+            .current_class
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .has_superclass
+            .borrow()
+        {
+            self.error("Can't use 'super' in a class with no superclass.");
+        }
+        self.consume(TokenType::Dot, "Expect '.' after 'super'.");
+        self.consume(TokenType::Identifier, "Expect superclass method name.");
+
+        let constant = self.parser.previous.clone();
+        let name = self.identifier_constant(&constant);
+
+        self.named_variable(&self.synthetic_token(TokenType::This, "this"), false);
+        self.named_variable(&self.synthetic_token(TokenType::Super, "super"), false);
+        self.emit_bytes(Opcode::GetSuper, name);
+    }
+
     /*
      * Treat 'this' as a lexically scoped local variable whose value gets
      * initialized magically. Compiling it like a local variable means helps
@@ -1255,7 +1299,12 @@ impl Compiler {
             .enclosing
             .replace(prev_class);
 
-        // Handle inheritance
+        /*
+         * Handle inheritance. This gives us a mechanism at runtime to access
+         * the superclass object of the surrounding subclass from within any
+         * of the subclass’s methods. Emit code to load the variable
+         * named "super" that is a local variable outside of the method body.
+         */
         if self.matches(TokenType::Less) {
             self.consume(TokenType::Identifier, "Expect superclass name.");
             // Lookup superclass (previous token) by name and pushes it onto stack
@@ -1264,9 +1313,19 @@ impl Compiler {
             if class_name.lexeme == superclass_name.lexeme {
                 self.error("A class can't inherit from itself.");
             }
+            // Begin scope for each subclass so that the variable "super" doesn't collide
+            self.begin_scope();
+            self.add_local(&self.synthetic_token(TokenType::Super, "super"));
+            self.define_variable(0);
             // Load subclass onto stack followed by an OP_INHERIT
             self.named_variable(&class_name, false);
-            self.emit_byte(Opcode::Inherit)
+            self.emit_byte(Opcode::Inherit);
+            self.current_class
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .has_superclass
+                .replace(true);
         }
         /* Generate code to load a variable with given name onto stack
          * so the method declarations can bind to the class name
@@ -1279,6 +1338,18 @@ impl Compiler {
         self.consume(TokenType::RightBrace, "Expect '}' aftre class body.");
         // pop class variable as it is no longer needed by the method declarations
         self.emit_byte(Opcode::Pop);
+
+        // End scope (for the variable "super") only if the current class has a superclass
+        if *self
+            .current_class
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .has_superclass
+            .borrow()
+        {
+            self.end_scope();
+        }
 
         // Pop the class compiler off the stack and restore the enclosing one
         let prev_class = self
