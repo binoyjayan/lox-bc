@@ -35,6 +35,7 @@ pub enum Opcode {
     Invoke,
     Inherit,
     GetSuper,
+    SuperInvoke,
 }
 
 impl From<u8> for Opcode {
@@ -76,6 +77,7 @@ impl From<u8> for Opcode {
             33 => Opcode::Invoke,
             34 => Opcode::Inherit,
             35 => Opcode::GetSuper,
+            36 => Opcode::SuperInvoke,
             _ => unimplemented!("Invalid opcode {}", code),
         }
     }

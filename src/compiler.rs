@@ -791,7 +791,7 @@ impl Compiler {
     fn resolve_upvalue(&self, name: &Token) -> Option<u8> {
         match self.result.borrow().resolve_upvalue(name) {
             Err(FindResult::TooManyVariables) => {
-                self.error("TODO: error message");
+                self.error("Too many closure variables in function.");
                 None
             }
             Ok(val) => val,
@@ -856,6 +856,7 @@ impl Compiler {
      * current receiver stored in the hidden variable “this” and push it onto
      * the stack. The second call emits code to look up the superclass from its
      * "super" variable and push that on top.
+     *
      */
     fn super_(&mut self, _can_assign: bool) {
         if self.current_class.borrow().is_none() {
@@ -877,8 +878,18 @@ impl Compiler {
         let name = self.identifier_constant(&constant);
 
         self.named_variable(&self.synthetic_token(TokenType::This, "this"), false);
-        self.named_variable(&self.synthetic_token(TokenType::Super, "super"), false);
-        self.emit_bytes(Opcode::GetSuper, name);
+
+        // Use optimized invocation (SuperInvoke) if it is a super method call.
+        // (left parenthesis after the superclass method name)
+        if self.matches(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.named_variable(&self.synthetic_token(TokenType::Super, "super"), false);
+            self.emit_bytes(Opcode::SuperInvoke, name);
+            self.emit_byte(arg_count);
+        } else {
+            self.named_variable(&self.synthetic_token(TokenType::Super, "super"), false);
+            self.emit_bytes(Opcode::GetSuper, name);
+        }
     }
 
     /*

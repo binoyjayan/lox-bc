@@ -138,6 +138,7 @@ impl Chunk {
             Opcode::Invoke => self.invoke_instruction("OP_INVOKE", offset),
             Opcode::Inherit => self.simple_instruction("OP_INHERIT", offset),
             Opcode::GetSuper => self.constant_instruction("OP_GET_SUPER", offset),
+            Opcode::SuperInvoke => self.invoke_instruction("OP_SUPER_INVOKE", offset),
         }
     }
 

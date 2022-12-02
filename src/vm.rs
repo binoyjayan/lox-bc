@@ -280,6 +280,9 @@ impl VM {
                 Opcode::GetSuper => {
                     self.get_super_op()?;
                 }
+                Opcode::SuperInvoke => {
+                    self.invoke_super()?;
+                }
             }
         }
     }
@@ -438,6 +441,22 @@ impl VM {
         Ok(())
     }
 
+    fn invoke_super(&mut self) -> Result<(), InterpretResult> {
+        let method_name = self.read_string();
+        let arg_count = self.read_byte() as usize;
+        let superclass = self.pop()?.borrow().clone();
+        let superclass = if let Value::Class(klass) = superclass {
+            klass
+        } else {
+            return Err(InterpretResult::RuntimeError);
+        };
+
+        if !self.invoke_from_class(&superclass, &method_name, arg_count) {
+            return Err(InterpretResult::RuntimeError);
+        }
+        Ok(())
+    }
+
     /*
      * First grab the receiver off the stack. The arguments passed to the
      * method are above it on the stack, so peek that many slots down. Then,
@@ -540,6 +559,7 @@ impl VM {
      */
     fn call(&mut self, closure: Rc<Closure>, arg_count: usize) -> bool {
         let arity = closure.get_arity();
+
         if arity != arg_count {
             let _ = self.error_runtime(format!(
                 "Expected {} arguments but got {}.",
@@ -552,13 +572,11 @@ impl VM {
             let _ = self.error_runtime("Stack overflow.");
             return false;
         }
-
         self.frames.push(CallFrame {
             closure: Rc::clone(&closure),
             ip: RefCell::new(0),
             slots: self.stack.len() - arg_count - 1,
         });
-
         true
     }
 
@@ -686,7 +704,7 @@ impl VM {
 
     // Helper to read string from constant table
     fn read_string(&mut self) -> String {
-        let constant = self.read_constant().clone();
+        let constant = self.read_constant();
         if let Value::Str(s) = constant {
             s
         } else {
