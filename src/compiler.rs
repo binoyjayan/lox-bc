@@ -1056,15 +1056,22 @@ impl Compiler {
      * using the function 'add_local()'
      */
     fn declare_variable(&mut self) {
-        if !self.result.borrow().in_scope() {
-            return;
-        }
-        let name = self.parser.previous.lexeme.clone();
-        // count number of matches
-        if let FindResult::Depth(_d) = self.result.borrow().find_variable(&name) {
-            self.error("Already a variable with this name in this scope.");
-        } else {
-            self.add_local(&self.parser.previous);
+        if self.result.borrow().in_scope() {
+            let name = &self.parser.previous.lexeme;
+            if let FindResult::Depth(depth) = self.result.borrow().find_variable(name) {
+                /*
+                 * If there is a variable with the same name at a depth that is less that
+                 * the depth of the current scope, we can shadow that variable in the new
+                 * scope, else report an error.
+                 */
+                if depth < *self.result.borrow().scope_depth.borrow() as u8 {
+                    self.add_local(&self.parser.previous);
+                } else {
+                    self.error("Already a variable with this name in this scope.");
+                }
+            } else {
+                self.add_local(&self.parser.previous);
+            }
         }
     }
 
@@ -1116,6 +1123,9 @@ impl Compiler {
      * has already executed code for the variable's initializer (or the
      * implicit nil), and that value is sitting on top of the stack as the
      * only remaining temporary. The temporary becomes the local variable.
+     *
+     * Declaring a variable adds it into the scope. Defining it makes it
+     * available for use.
      */
     fn define_variable(&mut self, global: u8) {
         if self.result.borrow().in_scope() {
@@ -1134,7 +1144,7 @@ impl Compiler {
             loop {
                 self.expression();
                 if arg_count == 255 {
-                    self.error("Can't have more than 255 arguments");
+                    self.error("Can't have more than 255 arguments.");
                 }
                 arg_count += 1;
                 if !self.matches(TokenType::Comma) {
@@ -1223,7 +1233,7 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
-        self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
 
         self.block();
 
@@ -1404,7 +1414,7 @@ impl Compiler {
      * does not use an initializer. Expect the statement to be terminated with a semicolon.
      */
     fn var_declaration(&mut self) {
-        let global = self.parse_variable("Expect a variable name.");
+        let global = self.parse_variable("Expect variable name.");
         if self.matches(TokenType::Equal) {
             self.expression();
         } else {
@@ -1613,7 +1623,7 @@ impl Compiler {
      */
     fn return_statement(&mut self) {
         if self.result.borrow().chunk_type == ChunkType::Script {
-            self.error("Can't return from top-level code,")
+            self.error("Can't return from top-level code.")
         }
         if self.matches(TokenType::Semicolon) {
             self.emit_return();

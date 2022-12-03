@@ -43,6 +43,7 @@ impl PartialEq for Value {
             (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
             (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Native(a), Value::Native(b)) => a.type_id() == b.type_id(),
+            (Value::BoundMethod(a), Value::BoundMethod(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }

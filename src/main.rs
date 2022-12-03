@@ -90,6 +90,11 @@ mod tests {
     }
 
     #[test]
+    fn for_loop_scope() {
+        run_test("./examples/for-loop-scope.lox", true);
+    }
+
+    #[test]
     fn function1_for() {
         run_test("./examples/function-for.lox", true);
     }
@@ -100,8 +105,13 @@ mod tests {
     }
 
     #[test]
-    fn function_fibonacci() {
-        run_test("./examples/function-fibonacci.lox", true);
+    fn function_recursion_fibonacci() {
+        run_test("./examples/function-recursion-fibonacci.lox", true);
+    }
+
+    #[test]
+    fn function_recursion_local() {
+        run_test("./examples/function-recursion-local.lox", true);
     }
 
     #[test]
@@ -148,6 +158,10 @@ mod tests {
     fn closure_devious() {
         run_test("./examples/closure-devious.lox", true);
     }
+    #[test]
+    fn closure_for_loop() {
+        run_test("./examples/closure-for-loop.lox", true);
+    }
 
     #[test]
     fn class_simple() {
@@ -187,5 +201,10 @@ mod tests {
     #[test]
     fn class_superclass_inheritance_super() {
         run_test("./examples/class-inheritance-super.lox", true);
+    }
+
+    #[test]
+    fn class_superclass_inheritance_initializer() {
+        run_test("./examples/class-inheritance-initializer.lox", true);
     }
 }

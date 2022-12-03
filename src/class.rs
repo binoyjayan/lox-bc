@@ -28,7 +28,11 @@ impl Class {
     }
 
     pub fn get_method(&self, name: &str) -> Option<Rc<Closure>> {
-        self.methods.borrow().get(name).cloned()
+        if name == "init" {
+            self.get_init_method()
+        } else {
+            self.methods.borrow().get(name).cloned()
+        }
     }
 
     // To enable optimized invocation for initialize

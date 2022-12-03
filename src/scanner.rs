@@ -122,7 +122,7 @@ impl Scanner {
             self.advance();
         }
         if self.is_at_end() {
-            return self.error_token("Unterminated string");
+            return self.error_token("Unterminated string.");
         }
         self.advance();
         self.make_token(TokenType::StringLiteral)
@@ -220,7 +220,7 @@ impl Scanner {
     }
 
     fn peek_next(&self) -> char {
-        if self.is_at_end() {
+        if self.current + 1 >= self.source.len() {
             '\0'
         } else {
             self.source[self.current + 1]

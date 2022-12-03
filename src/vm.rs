@@ -20,6 +20,11 @@ pub struct VM {
     globals: HashMap<String, Value>,
 }
 
+enum OperandType {
+    TwoNumbers,
+    NumbersOrStrings,
+}
+
 // An instance of type 'CallFrame' is used for each function call
 #[derive(Debug)]
 struct CallFrame {
@@ -65,7 +70,7 @@ impl VM {
         self.call(closure, 0);
 
         // TODO: Is this required?
-        // self.run(); let _ = self.pop();
+        // let r = self.run(); let _ = self.pop(); r
         self.run()
     }
 
@@ -122,20 +127,20 @@ impl VM {
                     self.stack.push(result);
                 }
                 Opcode::Add => {
-                    self.binary_op(|a, b| a + b)?;
+                    self.binary_op(OperandType::NumbersOrStrings, |a, b| a + b)?;
                 }
                 Opcode::Subtract => {
-                    self.binary_op(|a, b| a - b)?;
+                    self.binary_op(OperandType::TwoNumbers, |a, b| a - b)?;
                 }
                 Opcode::Multiply => {
-                    self.binary_op(|a, b| a * b)?;
+                    self.binary_op(OperandType::TwoNumbers, |a, b| a * b)?;
                 }
                 Opcode::Divide => {
-                    self.binary_op(|a, b| a / b)?;
+                    self.binary_op(OperandType::TwoNumbers, |a, b| a / b)?;
                 }
                 Opcode::Negate => {
                     if !self.peek(0)?.borrow().is_number() {
-                        return Err(self.error_runtime("Operand must be a number"));
+                        return Err(self.error_runtime("Operand must be a number."));
                     }
                     let value = self.pop()?.borrow().clone();
                     self.push(-&value);
@@ -153,10 +158,10 @@ impl VM {
                     self.push(Value::Boolean(a == b));
                 }
                 Opcode::Greater => {
-                    self.binary_op(|a, b| Value::Boolean(a > b))?;
+                    self.binary_op(OperandType::TwoNumbers, |a, b| Value::Boolean(a > b))?;
                 }
                 Opcode::Less => {
-                    self.binary_op(|a, b| Value::Boolean(a < b))?;
+                    self.binary_op(OperandType::TwoNumbers, |a, b| Value::Boolean(a < b))?;
                 }
                 Opcode::Print => {
                     let value = self.pop()?.borrow().clone();
@@ -192,7 +197,7 @@ impl VM {
                         if let Entry::Occupied(mut o) = self.globals.entry(s.clone()) {
                             *o.get_mut() = value;
                         } else {
-                            return Err(self.error_runtime(format!("Undefined variable '{}'", s)));
+                            return Err(self.error_runtime(format!("Undefined variable '{}'.", s)));
                         }
                     } else {
                         panic!("Unable to read constant from table.");
@@ -510,7 +515,7 @@ impl VM {
         if let Some(closure) = klass.get_method(name) {
             self.call(closure, arg_count)
         } else {
-            let _ = self.error_runtime(format!("Undefined property '{}'", name));
+            let _ = self.error_runtime(format!("Undefined property '{}'.", name));
             false
         }
     }
@@ -533,7 +538,8 @@ impl VM {
         let constant = self.read_constant();
         if let Value::Func(function) = constant {
             let upvalue_count = function.upvalue_count();
-            let closure = Closure::new(function);
+            let closure = Rc::new(Closure::new(function));
+            self.push(Value::Closure(closure.clone()));
             for _ in 0..upvalue_count {
                 let is_local = self.read_byte() != 0;
                 let index = self.read_byte() as usize;
@@ -545,7 +551,6 @@ impl VM {
                 };
                 closure.push_upvalue(&captured);
             }
-            self.push(Value::Closure(Rc::new(closure)));
         } else {
             panic!("Failed to find closure")
         }
@@ -723,7 +728,11 @@ impl VM {
         println!();
     }
 
-    fn binary_op(&mut self, op: fn(a: &Value, b: &Value) -> Value) -> Result<(), InterpretResult> {
+    fn binary_op(
+        &mut self,
+        optype: OperandType,
+        op: fn(a: &Value, b: &Value) -> Value,
+    ) -> Result<(), InterpretResult> {
         if self.peek(0)?.borrow().is_string() && self.peek(1)?.borrow().is_string() {
             // pop b before a
             let b = self.pop()?;
@@ -737,7 +746,12 @@ impl VM {
             self.push(op(&a.borrow(), &b.borrow()));
             Ok(())
         } else {
-            Err(self.error_runtime("Operands must be two numbers or two strings."))
+            match optype {
+                OperandType::TwoNumbers => Err(self.error_runtime("Operands must be numbers.")),
+                OperandType::NumbersOrStrings => {
+                    Err(self.error_runtime("Operands must be two numbers or two strings."))
+                }
+            }
         }
     }
 
