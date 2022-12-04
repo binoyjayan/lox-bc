@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-cargo build --release --no-default-features
+cargo build --release
 
 for f in examples/*.lox; do
   echo "==================== $f ===================="
